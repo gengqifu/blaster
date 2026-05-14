@@ -242,6 +242,7 @@ data class LocalSongResult(
     val localSongId: String,
     val lifecycleState: LifecycleState,
     val association: CloudAssociation?,
+    val candidates: List<CloudCandidate>,
     val localFeature: LocalFeature?,
     val lastReason: String?
 )
