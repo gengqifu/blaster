@@ -374,7 +374,73 @@ MVP-1 完成必须满足：
 - 构建验证通过：`./gradlew :core:assemble :demo:assembleDebug`。
 - 若已引入单元测试任务，对应单元测试通过。
 
-## 12. 与后续 MVP 的交接
+## 12. 执行拆分（5 个里程碑）
+
+在不改变 MVP-1 范围的前提下，执行按以下 5 个里程碑推进。每个里程碑都要求“实现 + 测试”闭环后再进入下一步。
+
+### 12.1 里程碑 1：领域模型与状态基线
+
+产出：
+
+- `LocalSong`、`BasicSongInfo`、`MatchResponse`、`LocalSongResult`、`LifecycleState`、`MatchResult`。
+- 规则固化：`CANDIDATE` 不可提升；`degraded -> WAITING_TO_CONTINUE`；`OUTDATED` 仅 `markOutdated` 触发。
+
+完成标准：
+
+- 模型可编译，状态语义在命名和注释中可读。
+- 领域模型测试覆盖 `RELIABLE/CANDIDATE/NONE/ERROR` 与 `OUTDATED vs WAITING_TO_CONTINUE`。
+
+### 12.2 里程碑 2：网关抽象与 Mock 匹配
+
+产出：
+
+- `CloudMatchGateway` 接口。
+- `MockCloudMatchGateway`（first-match 规则、规则条件、场景模拟）。
+
+完成标准：
+
+- 支持 `RELIABLE/CANDIDATE/NONE/ERROR/TIMEOUT/DEGRADED` 六类场景。
+- `MockCloudMatchGateway` 不直接返回 `OUTDATED`。
+- Mock 规则测试覆盖：first-match、多条件全满足、无命中 `NONE`，以及 `forceScenario` 对 `RELIABLE/CANDIDATE/NONE/ERROR/TIMEOUT/DEGRADED` 六类场景的强制覆盖。
+
+### 12.3 里程碑 3：存储抽象与内存实现
+
+产出：
+
+- `FeatureRepository` 接口与内存实现。
+- 支持保存歌曲/基础信息/匹配/状态/retry/reason/updatedAt，单查/批查，`markOutdated`。
+
+完成标准：
+
+- 同 `localSongId` 覆盖策略生效。
+- candidate 不写 reliable association。
+- Repository 测试覆盖写入、批量查询、`markOutdated`、优先级约束。
+
+### 12.4 里程碑 4：Pipeline 编排与 ResultProvider
+
+产出：
+
+- `FeaturePipeline` 与 `ResultProvider`。
+- 流转行为：`BASIC_INFO_READY -> BASIC_MATCHING -> 终态`，错误重试（默认 2），`lastReason` 记录，对外状态映射。
+
+完成标准：
+
+- 6 类输入路径 + `markOutdated` 路径可闭环查询。
+- Pipeline/Provider 测试覆盖状态流转、retry 上限、candidate 不强消费、原因可读。
+
+### 12.5 里程碑 5：Demo 接入与最终验收
+
+产出：
+
+- demo 支持场景切换、构造歌曲、触发处理、手动标记过期、结果展示。
+
+完成标准：
+
+- 集成测试覆盖 reliable/candidate/none/error/timeout/degraded/outdated（手动标记）全链路。
+- 构建验证通过：`./gradlew :core:assemble :demo:assembleDebug`。
+- 文档定义的 MVP-1 场景在 demo 可见且语义一致。
+
+## 13. 与后续 MVP 的交接
 
 MVP-1 需要为后续阶段保留接口边界：
 

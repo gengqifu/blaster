@@ -115,6 +115,11 @@
 - 候选关联不会被 ResultProvider 标记为可继承云端能力。
 - `./gradlew :core:assemble :demo:assembleDebug` 通过。
 
+### 4.7 执行拆分
+
+- MVP-1 执行按 5 个里程碑推进（模型状态基线 -> 网关 Mock -> 存储实现 -> Pipeline/ResultProvider -> Demo/验收）。
+- 详细拆分与每步完成标准见：`mvp-plans/mvp-1-client-mock-loop.md` 第 12 章“执行拆分（5 个里程碑）”。
+
 ## 5. MVP-2：本地歌曲扫描与基础信息 Mock 匹配
 
 ### 5.1 开发任务
