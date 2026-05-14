@@ -48,7 +48,7 @@
 | 阶段 | 详细计划 | 状态 |
 | --- | --- | --- |
 | MVP-1 | `mvp-plans/mvp-1-client-mock-loop.md` | 已补齐 |
-| MVP-2 | `mvp-plans/mvp-2-local-scan-basic-match.md` | 待补齐 |
+| MVP-2 | `mvp-plans/mvp-2-local-scan-basic-match.md` | 已补齐 |
 | MVP-3 | `mvp-plans/mvp-3-audio-fingerprint-mock-match.md` | 待补齐 |
 | MVP-4 | `mvp-plans/mvp-4-local-embedding-validation.md` | 待补齐 |
 
