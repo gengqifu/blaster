@@ -10,7 +10,7 @@ MVP-1 完成后应具备：
 
 - 可构造本地歌曲输入。
 - 可通过 `CloudMatchGateway` 抽象执行基础信息 Mock 匹配。
-- 可覆盖 reliable、candidate、none、error、timeout、degrade、outdated 等主要分支。
+- 可覆盖 reliable、candidate、none、error、timeout、degrade 等主要分支，并支持手动标记 `OUTDATED`。
 - 可保存处理状态和结果。
 - 可通过 ResultProvider 向搜索、推荐、播放等调用方查询当前业务结果。
 - `demo` 可选择 Mock 场景并展示处理结果。
@@ -185,7 +185,6 @@ MVP-1 只真实调用 `matchByBasicInfo`。
 - `ERROR`：模拟服务异常。
 - `TIMEOUT`：模拟超时。
 - `DEGRADED`：模拟服务降级或能力关闭。
-- `OUTDATED`：模拟已有结果过期，需要重算。
 
 ## 5. FeaturePipeline 状态流转
 
@@ -203,7 +202,7 @@ flowchart TD
     E -->|ERROR| I[记录错误并按策略重试或 FAILED]
     I --> J{错误原因}
     J -->|timeout| K[按策略重试或 FAILED]
-    J -->|degraded| L[保存 WAITING_TO_CONTINUE 或 SKIPPED]
+    J -->|degraded| L[保存 WAITING_TO_CONTINUE]
     J -->|other error| K
     M[手动标记过期] --> N[保存 OUTDATED]
 ```
@@ -216,9 +215,9 @@ flowchart TD
 - `ERROR` 需要记录失败原因，技术错误需要记录 retry count。
 - 超过最大重试次数后保存为 `FAILED`。
 - `rejectReason = timeout` 时按技术异常处理，可重试。
-- `rejectReason = degraded` 时按能力降级处理，保存为 `WAITING_TO_CONTINUE` 或 `SKIPPED`。
+- `rejectReason = degraded` 时按能力降级处理，统一保存为 `WAITING_TO_CONTINUE`。
 - `OUTDATED` 用于验证版本升级或 schema 升级后的过期语义。
-- MVP-1 通过 `FeatureRepository.markOutdated(localSongId)` 手动触发 `OUTDATED`，不实现自动版本检测。
+- MVP-1 的 `OUTDATED` 仅通过 `FeatureRepository.markOutdated(localSongId)` 手动触发，不实现自动版本检测，`MockCloudMatchGateway` 不直接返回 `OUTDATED`。
 
 ### 5.3 重试与降级最小规则
 
@@ -308,7 +307,7 @@ MVP-1 使用内存存储实现：
 - error 异常。
 - timeout 超时。
 - degrade 降级。
-- outdated 过期。
+- 手动标记 outdated 过期。
 
 Demo 不需要真实扫描设备音乐库。
 
@@ -329,6 +328,7 @@ Demo 不需要真实扫描设备音乐库。
 - 无规则命中返回 `NONE`。
 - `forceScenario` 可强制 reliable、candidate、none、error、timeout、degrade。
 - timeout 可被 pipeline 识别为可重试失败。
+- Mock 网关不直接返回 `OUTDATED`。
 
 ### 9.3 Pipeline 测试
 
@@ -337,7 +337,7 @@ Demo 不需要真实扫描设备音乐库。
 - none 流转到 `UNASSOCIATED`。
 - error / timeout 记录原因并重试。
 - 超过最大重试次数流转到 `FAILED`。
-- degrade 流转到 `WAITING_TO_CONTINUE` 或 `SKIPPED`。
+- degrade 流转到 `WAITING_TO_CONTINUE`。
 - 标记过期后流转到 `OUTDATED`。
 
 ### 9.4 ResultProvider 测试
@@ -354,7 +354,7 @@ Demo 不需要真实扫描设备音乐库。
 - 构造歌曲 -> Mock none -> ResultProvider 查询未关联。
 - 构造歌曲 -> Mock error -> 重试后 failed 或恢复。
 - 构造歌曲 -> Mock timeout -> 重试后 failed 或恢复。
-- 构造歌曲 -> Mock degrade -> waiting 或 skipped。
+- 构造歌曲 -> Mock degrade -> waiting。
 - 已有结果 -> 标记 outdated -> ResultProvider 查询过期。
 - demo 页面可手动切换以上场景并展示结果。
 
@@ -365,7 +365,8 @@ MVP-1 完成必须满足：
 - 不依赖真实云端即可跑通客户端 Mock 闭环。
 - 不依赖真实本地歌曲扫描即可构造歌曲并处理。
 - `CloudMatchGateway` 抽象稳定，Mock 与未来真实实现可共用语义模型。
-- `MockCloudMatchGateway` 覆盖 reliable、candidate、none、error、timeout、degrade、outdated。
+- `MockCloudMatchGateway` 覆盖 reliable、candidate、none、error、timeout、degrade。
+- `OUTDATED` 仅通过 `FeatureRepository.markOutdated(localSongId)` 手动触发。
 - ResultProvider 能区分可靠关联、候选关联、未关联、等待、失败、跳过、过期。
 - 候选关联不会被标记为可继承云端能力。
 - 本地存储接口可被后续 Room 实现替换。

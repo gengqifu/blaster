@@ -91,11 +91,12 @@
 ### 4.4 单元测试
 
 - `LifecycleState` 状态转换测试。
-- `MockCloudMatchGateway` reliable / candidate / none / error / timeout / degrade 规则测试。
+- `MockCloudMatchGateway` reliable / candidate / none / error / timeout / degrade 规则测试（不直接返回 `OUTDATED`）。
 - ResultProvider 状态映射测试。
 - 候选关联不得被映射为可靠关联测试。
 - 失败重试计数与最终失败状态测试。
 - `OUTDATED` 与 `WAITING_TO_CONTINUE` 区分测试。
+- `OUTDATED` 仅由 `FeatureRepository.markOutdated(localSongId)` 触发测试。
 
 ### 4.5 集成测试
 
