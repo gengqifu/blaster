@@ -430,7 +430,7 @@ MVP-3 需要为 MVP-4 保留以下交接点：
 
 - [x] 里程碑 1：文档、ADR 与契约基线（已完成）
 - [x] 里程碑 2：音频识别队列、存储与 Mock 分支（已完成）
-- [ ] 里程碑 3：PCM 解码与片段策略
+- [x] 里程碑 3：PCM 解码与片段策略（已完成）
 - [ ] 里程碑 4：Chromaprint Native 指纹接入
 - [ ] 里程碑 5：Scheduler 与 Pipeline 音频阶段
 - [ ] 里程碑 6：Demo 接入与最终验收
@@ -536,6 +536,14 @@ MVP-3 需要为 MVP-4 保留以下交接点：
 完成产物：
 
 - `PcmDecoder`、片段策略实现和对应测试。
+
+验收记录：
+
+- 已新增 `PcmDecoder`，基于 `MediaExtractor + MediaCodec` 执行系统解码。
+- 已新增 `ClipPolicySelector`，覆盖短歌全量可用片段、普通歌曲中间片段、长音频三段代表性片段和未知时长默认策略。
+- 已新增输入校验，缺失 URI 映射为 `INACCESSIBLE_URI`，不支持格式映射为 `UNSUPPORTED_FORMAT`，解码异常映射为 `DECODE_ERROR`。
+- JVM 单测不直接执行 Android framework 解码，已隔离片段策略和错误映射为纯 Kotlin 单测。
+- 命令通过：`./gradlew :core:test --no-daemon`。
 
 ### 15.4 里程碑 4：Chromaprint Native 指纹接入
 
