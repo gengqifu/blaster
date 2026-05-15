@@ -431,7 +431,7 @@ MVP-3 需要为 MVP-4 保留以下交接点：
 - [x] 里程碑 1：文档、ADR 与契约基线（已完成）
 - [x] 里程碑 2：音频识别队列、存储与 Mock 分支（已完成）
 - [x] 里程碑 3：PCM 解码与片段策略（已完成）
-- [ ] 里程碑 4：Chromaprint Native 指纹接入
+- [x] 里程碑 4：Chromaprint Native 指纹接入（已完成）
 - [ ] 里程碑 5：Scheduler 与 Pipeline 音频阶段
 - [ ] 里程碑 6：Demo 接入与最终验收
 
@@ -574,6 +574,18 @@ MVP-3 需要为 MVP-4 保留以下交接点：
 完成产物：
 
 - Native wrapper、CMake 配置、`AudioFingerprintExtractor` 和对应测试/构建验证。
+
+验收记录：
+
+- 已在 `core` 接入 CMake/NDK `externalNativeBuild`。
+- 已固定首版 ABI 为 `arm64-v8a`。
+- 已通过 CMake `FetchContent` 固定 Chromaprint revision `6b13ce3a81ae931e7477c4856a86bece99157cd8`，并强制 `FFT_LIB=kissfft`、`BUILD_TOOLS=OFF`、`BUILD_TESTS=OFF`。
+- 已新增 JNI wrapper `blaster_chromaprint_jni`，输入 PCM16 bytes、sample rate、channel count，输出 Chromaprint base64 payload。
+- 已新增 `AudioFingerprintExtractor`，记录 `algorithm`、`algorithmVersion`、`clipPolicy`、`payloadEncoding`、payload digest 和 `costMs`。
+- 已添加 Chromaprint / KissFFT license notice 文件。
+- 命令通过：`./gradlew :core:test --no-daemon`。
+- 命令通过：`./gradlew :core:assembleDebug --no-daemon`。
+- native 产物验证通过：`libblaster_chromaprint_jni.so`、`libchromaprint.so`、`libc++_shared.so` 已生成于 `arm64-v8a` 输出目录。
 
 ### 15.5 里程碑 5：Scheduler 与 Pipeline 音频阶段
 
