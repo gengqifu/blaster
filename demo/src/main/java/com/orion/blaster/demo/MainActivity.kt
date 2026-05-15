@@ -7,13 +7,22 @@ import android.widget.Spinner
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import com.orion.blaster.core.audioidentity.AudioIdentifyInputGenerator
+import com.orion.blaster.core.audioidentity.AudioIdentifyInputResult
+import com.orion.blaster.core.audioqueue.AudioIdentityQueue
+import com.orion.blaster.core.audioqueue.AudioIdentityQueueItem
+import com.orion.blaster.core.gateway.AudioIdentityMatchRequest
 import com.orion.blaster.core.mock.MockCloudMatchGateway
+import com.orion.blaster.core.model.AudioIdentitySummary
 import com.orion.blaster.core.pipeline.FeaturePipeline
+import com.orion.blaster.core.pipeline.AudioIdentityProcessSummary
 import com.orion.blaster.core.pipeline.ScanProcessSummary
 import com.orion.blaster.core.pipeline.ScanSource
 import com.orion.blaster.core.result.ResultProvider
 import com.orion.blaster.core.scanner.TestLocalSongScanner
 import com.orion.blaster.core.scanner.TestSongRecord
+import com.orion.blaster.core.scheduler.AudioIdentityDeviceState
+import com.orion.blaster.core.scheduler.AudioIdentityScheduler
 import com.orion.blaster.core.store.InMemoryFeatureRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -22,11 +31,21 @@ import kotlinx.coroutines.launch
 class MainActivity : AppCompatActivity() {
     private val scenarios = listOf("RELIABLE", "CANDIDATE", "NONE", "ERROR", "TIMEOUT", "DEGRADED")
     private val sources = listOf("TEST_RESOURCES", "MEDIA_STORE")
+    private val audioGuards = listOf(
+        "ALLOW",
+        "HIGH_COST_DISABLED",
+        "PLAYBACK",
+        "LOW_BATTERY",
+        "HIGH_TEMPERATURE",
+        "FOREGROUND_BUSY",
+        "NO_PERMISSION",
+    )
     private val repository = InMemoryFeatureRepository()
     private val gateway = MockCloudMatchGateway()
     private val resultProvider = ResultProvider(repository)
     private val uiScope = CoroutineScope(Dispatchers.Main)
     private var latestSummary: ScanProcessSummary? = null
+    private var latestAudioSummary: AudioIdentityProcessSummary? = null
     private var latestRecords: List<TestSongRecord> = emptyList()
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -35,8 +54,11 @@ class MainActivity : AppCompatActivity() {
 
         val sourceSpinner = findViewById<Spinner>(R.id.sourceSpinner)
         val spinner = findViewById<Spinner>(R.id.scenarioSpinner)
+        val audioScenarioSpinner = findViewById<Spinner>(R.id.audioScenarioSpinner)
+        val audioGuardSpinner = findViewById<Spinner>(R.id.audioGuardSpinner)
         val runButton = findViewById<Button>(R.id.runButton)
         val changedScanButton = findViewById<Button>(R.id.changedScanButton)
+        val runAudioButton = findViewById<Button>(R.id.runAudioButton)
         val outdatedButton = findViewById<Button>(R.id.outdatedButton)
         val resultText = findViewById<TextView>(R.id.resultText)
 
@@ -50,6 +72,18 @@ class MainActivity : AppCompatActivity() {
             this,
             android.R.layout.simple_spinner_dropdown_item,
             scenarios,
+        )
+
+        audioScenarioSpinner.adapter = ArrayAdapter(
+            this,
+            android.R.layout.simple_spinner_dropdown_item,
+            scenarios,
+        )
+
+        audioGuardSpinner.adapter = ArrayAdapter(
+            this,
+            android.R.layout.simple_spinner_dropdown_item,
+            audioGuards,
         )
 
         runButton.setOnClickListener {
@@ -73,6 +107,18 @@ class MainActivity : AppCompatActivity() {
                     sourceLabel = selectedSource,
                     scenario = scenario,
                     changedSignature = true,
+                    resultView = resultText,
+                )
+            }
+        }
+
+        runAudioButton.setOnClickListener {
+            val scenario = audioScenarioSpinner.selectedItem as String
+            val guard = audioGuardSpinner.selectedItem as String
+            uiScope.launch {
+                runAudioIdentity(
+                    scenario = scenario,
+                    guard = guard,
                     resultView = resultText,
                 )
             }
@@ -118,6 +164,27 @@ class MainActivity : AppCompatActivity() {
         renderResult(resultView)
     }
 
+    private suspend fun runAudioIdentity(
+        scenario: String,
+        guard: String,
+        resultView: TextView,
+    ) {
+        if (latestSummary == null) {
+            resultView.text = "Run scan first, preferably with basic scenario NONE or CANDIDATE."
+            return
+        }
+
+        val scheduler = AudioIdentityScheduler(
+            queue = AudioIdentityQueue(repository),
+            deviceStateProvider = { deviceStateForGuard(guard) },
+        )
+        latestAudioSummary = buildPipeline(stableRecords(), changedSignatureRecords()).processAudioIdentityQueue(
+            scheduler = scheduler,
+            forceScenario = scenario,
+        )
+        renderResult(resultView)
+    }
+
     private fun renderResult(resultView: TextView) {
         val summary = latestSummary
         if (summary == null) {
@@ -132,10 +199,25 @@ class MainActivity : AppCompatActivity() {
             appendLine("summary:")
             appendLine("scanned=${summary.scannedCount}, new=${summary.newCount}, changed=${summary.changedCount}, unchanged=${summary.unchangedCount}")
             appendLine("deleted=${summary.deletedCount}, unavailable=${summary.unavailableCount}, matched=${summary.matchedCount}, skipped=${summary.skippedCount}")
+            latestAudioSummary?.let { audio ->
+                appendLine("audioIdentity: scheduled=${audio.scheduledCount}, waiting=${audio.waitingCount}, failed=${audio.failedCount}, reliable=${audio.reliableCount}, candidate=${audio.candidateCount}, none=${audio.noneCount}")
+            }
             appendLine()
             appendLine("scanned songs:")
             latestRecords.forEach { record ->
                 appendLine("${record.localSongId} | title=${record.title ?: "null"} | artist=${record.artist ?: "null"} | signature=${record.contentSignature ?: "null"} | state=${record.sourceState}")
+            }
+            appendLine()
+            appendLine("audio identity queue:")
+            AudioIdentityQueue(repository).pendingItems().forEach { item ->
+                appendLine("${item.localSongId} | state=${item.currentLifecycleState} | uri=${item.uri ?: "null"} | duration=${item.durationMs ?: "null"} | retry=${item.retryCount}")
+            }
+            appendLine()
+            appendLine("audio identity summaries:")
+            songIds.forEach { songId ->
+                repository.getAudioIdentitySummary(songId)?.let { summary ->
+                    appendLine("${summary.localSongId} | algorithm=${summary.algorithm} | version=${summary.algorithmVersion} | clip=${summary.clipPolicy} | encoding=${summary.payloadEncoding} | digest=${summary.payloadDigest ?: "null"} | costMs=${summary.costMs ?: "null"} | reason=${summary.lastReason ?: "null"}")
+                }
             }
             appendLine()
             appendLine("result provider:")
@@ -153,6 +235,7 @@ class MainActivity : AppCompatActivity() {
         return FeaturePipeline(
             gateway = gateway,
             repository = repository,
+            audioIdentifyInputGenerator = DemoAudioIdentifyInputGenerator(),
             testResourceScanner = TestLocalSongScanner(stableRecords),
             mediaStoreScanner = object : com.orion.blaster.core.scanner.LocalSongScanner {
                 override fun scan(): List<com.orion.blaster.core.scanner.ScannedLocalSong> = emptyList()
@@ -162,6 +245,7 @@ class MainActivity : AppCompatActivity() {
                 FeaturePipeline(
                     gateway = gateway,
                     repository = repository,
+                    audioIdentifyInputGenerator = DemoAudioIdentifyInputGenerator(),
                     testResourceScanner = TestLocalSongScanner(changedRecords),
                     mediaStoreScanner = object : com.orion.blaster.core.scanner.LocalSongScanner {
                         override fun scan(): List<com.orion.blaster.core.scanner.ScannedLocalSong> = emptyList()
@@ -221,6 +305,53 @@ class MainActivity : AppCompatActivity() {
             } else {
                 it
             }
+        }
+    }
+
+    private fun deviceStateForGuard(guard: String): AudioIdentityDeviceState {
+        return when (guard) {
+            "HIGH_COST_DISABLED" -> AudioIdentityDeviceState(highCostEnabled = false)
+            "PLAYBACK" -> AudioIdentityDeviceState(isPlaying = true)
+            "LOW_BATTERY" -> AudioIdentityDeviceState(lowBattery = true)
+            "HIGH_TEMPERATURE" -> AudioIdentityDeviceState(highTemperature = true)
+            "FOREGROUND_BUSY" -> AudioIdentityDeviceState(foregroundBusy = true)
+            "NO_PERMISSION" -> AudioIdentityDeviceState(mediaPermissionAvailable = false)
+            else -> AudioIdentityDeviceState()
+        }
+    }
+
+    private class DemoAudioIdentifyInputGenerator : AudioIdentifyInputGenerator {
+        override fun generate(
+            item: AudioIdentityQueueItem,
+            forceScenario: String?,
+        ): AudioIdentifyInputResult {
+            val payloadText = "demo-audio-identity:${item.localSongId}:${item.contentSignature ?: "no-signature"}"
+            val payload = payloadText.toByteArray(Charsets.UTF_8)
+            val digest = "demo:${payload.size}:${payload.firstOrNull()?.toInt() ?: 0}"
+            return AudioIdentifyInputResult.Success(
+                request = AudioIdentityMatchRequest(
+                    localSongId = item.localSongId,
+                    durationMs = item.durationMs,
+                    clipPolicy = "demo:middle-60s",
+                    algorithm = "chromaprint-compatible",
+                    algorithmVersion = "demo-mock-1",
+                    payloadEncoding = "demo-chromaprint-base64",
+                    payload = payload,
+                    basicInfo = item.basicInfo,
+                    forceScenario = forceScenario,
+                ),
+                summary = AudioIdentitySummary(
+                    localSongId = item.localSongId,
+                    algorithm = "chromaprint-compatible",
+                    algorithmVersion = "demo-mock-1",
+                    clipPolicy = "demo:middle-60s",
+                    payloadEncoding = "demo-chromaprint-base64",
+                    payloadDigest = digest,
+                    costMs = 1L,
+                    lastReason = null,
+                    updatedAtMs = System.currentTimeMillis(),
+                ),
+            )
         }
     }
 }

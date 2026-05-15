@@ -433,7 +433,7 @@ MVP-3 需要为 MVP-4 保留以下交接点：
 - [x] 里程碑 3：PCM 解码与片段策略（已完成）
 - [x] 里程碑 4：Chromaprint Native 指纹接入（已完成）
 - [x] 里程碑 5：Scheduler 与 Pipeline 音频阶段（已完成）
-- [ ] 里程碑 6：Demo 接入与最终验收
+- [x] 里程碑 6：Demo 接入与最终验收（已完成）
 
 ### 15.1 里程碑 1：文档、ADR 与契约基线
 
@@ -652,3 +652,11 @@ MVP-3 需要为 MVP-4 保留以下交接点：
 完成产物：
 
 - Demo MVP-3 闭环、最终验收记录和构建测试通过记录。
+
+验收记录：
+
+- Demo 已新增音频识别 Mock 场景选择。
+- Demo 已新增调度保护条件选择，覆盖高成本能力关闭、播放中、低电量、高温、前台繁忙和媒体权限不可用。
+- Demo 已新增音频识别触发入口，展示队列、音频识别摘要、payload 摘要、Mock 指纹结果和 ResultProvider 最终状态。
+- Demo 保留既有测试资源扫描和 changed-signature 扫描入口。
+- 最终验收命令通过：`./gradlew :core:test :core:assemble :demo:assembleDebug --no-daemon`。
