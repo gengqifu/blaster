@@ -5,11 +5,13 @@ import com.orion.blaster.core.model.LifecycleState
 import com.orion.blaster.core.model.LocalSong
 import com.orion.blaster.core.model.LocalSongResult
 import com.orion.blaster.core.model.MatchResponse
+import com.orion.blaster.core.model.SourceState
 import java.util.concurrent.ConcurrentHashMap
 
 class InMemoryFeatureRepository : FeatureRepository {
     private val songs = ConcurrentHashMap<String, LocalSong>()
     private val basicInfos = ConcurrentHashMap<String, BasicSongInfo>()
+    private val contentSignatures = ConcurrentHashMap<String, String?>()
     private val states = ConcurrentHashMap<String, StoredState>()
 
     override fun saveLocalSong(localSong: LocalSong) {
@@ -19,6 +21,12 @@ class InMemoryFeatureRepository : FeatureRepository {
     override fun saveBasicInfo(basicSongInfo: BasicSongInfo) {
         basicInfos[basicSongInfo.localSongId] = basicSongInfo
     }
+
+    override fun saveContentSignature(localSongId: String, contentSignature: String?) {
+        contentSignatures[localSongId] = contentSignature
+    }
+
+    override fun getContentSignature(localSongId: String): String? = contentSignatures[localSongId]
 
     override fun saveMatchResult(
         localSongId: String,
@@ -105,6 +113,38 @@ class InMemoryFeatureRepository : FeatureRepository {
         )
     }
 
+    override fun markDeletedOrUnavailable(
+        localSongId: String,
+        sourceState: SourceState,
+        updatedAtMs: Long,
+        lastReason: String?,
+    ) {
+        val previous = states[localSongId]
+        val association = previous?.result?.association
+        val candidates = previous?.result?.candidates.orEmpty()
+        val retryCount = previous?.retryCount ?: 0
+        val lifecycleState = when (sourceState) {
+            SourceState.DELETED -> LifecycleState.SKIPPED
+            SourceState.UNAVAILABLE -> LifecycleState.WAITING_TO_CONTINUE
+            SourceState.AVAILABLE -> previous?.result?.lifecycleState ?: LifecycleState.DISCOVERED
+        }
+
+        states[localSongId] = StoredState(
+            result = LocalSongResult(
+                localSongId = localSongId,
+                lifecycleState = lifecycleState,
+                association = association,
+                candidates = candidates,
+                localFeature = null,
+                lastReason = lastReason,
+                updatedAtMs = updatedAtMs,
+            ),
+            retryCount = retryCount,
+            lastReason = lastReason,
+            updatedAtMs = updatedAtMs,
+        )
+    }
+
     override fun getResult(localSongId: String): LocalSongResult? {
         return states[localSongId]?.result
     }
@@ -112,6 +152,14 @@ class InMemoryFeatureRepository : FeatureRepository {
     override fun getResults(localSongIds: List<String>): List<LocalSongResult> {
         return localSongIds.mapNotNull { id -> states[id]?.result }
     }
+
+    override fun getByLifecycleStates(states: Set<LifecycleState>): List<LocalSongResult> {
+        return this.states.values
+            .map { it.result }
+            .filter { it.lifecycleState in states }
+    }
+
+    override fun getAllLocalSongIds(): Set<String> = songs.keys
 
     override fun getRetryCount(localSongId: String): Int = states[localSongId]?.retryCount ?: 0
 

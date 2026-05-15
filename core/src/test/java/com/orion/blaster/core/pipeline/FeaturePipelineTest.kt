@@ -10,10 +10,13 @@ import com.orion.blaster.core.model.LocalSong
 import com.orion.blaster.core.model.MatchResponse
 import com.orion.blaster.core.model.MatchResult
 import com.orion.blaster.core.model.SourceState
+import com.orion.blaster.core.scanner.ScannedLocalSong
+import com.orion.blaster.core.scanner.TestLocalSongScanner
 import com.orion.blaster.core.store.InMemoryFeatureRepository
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Test
 import java.util.ArrayDeque
 
@@ -93,6 +96,186 @@ class FeaturePipelineTest {
         val result = repository.getResult("song-6")
         assertEquals(LifecycleState.OUTDATED, result?.lifecycleState)
         assertNotNull(result?.association)
+    }
+
+    @Test
+    fun scan_and_process_new_song_triggers_match_and_stores_result() = runBlocking {
+        val repository = InMemoryFeatureRepository()
+        val gateway = QueueGateway(listOf(reliableResponse("song-new")))
+        val scanner = TestLocalSongScanner(
+            records = listOf(
+                com.orion.blaster.core.scanner.TestSongRecord(
+                    localSongId = "song-new",
+                    uri = "content://media/new",
+                    title = "Title",
+                    artist = "Artist",
+                    album = "Album",
+                    durationMs = 1000L,
+                    sourceState = SourceState.AVAILABLE,
+                    contentSignature = "sig-new",
+                ),
+            ),
+        )
+        val pipeline = FeaturePipeline(
+            gateway = gateway,
+            repository = repository,
+            testResourceScanner = scanner,
+        )
+
+        val summary = pipeline.scanAndProcess(ScanSource.TEST_RESOURCES)
+
+        assertEquals(1, summary.newCount)
+        assertEquals(1, summary.matchedCount)
+        assertEquals(LifecycleState.RELIABLY_ASSOCIATED, repository.getResult("song-new")?.lifecycleState)
+    }
+
+    @Test
+    fun scan_and_process_signature_change_reprocesses_song() = runBlocking {
+        val repository = InMemoryFeatureRepository()
+        val gateway = QueueGateway(listOf(reliableResponse("song-change"), candidateResponse()))
+        val firstScanner = TestLocalSongScanner(
+            records = listOf(
+                com.orion.blaster.core.scanner.TestSongRecord(
+                    localSongId = "song-change",
+                    uri = "content://media/change",
+                    title = "Title",
+                    artist = "Artist",
+                    album = "Album",
+                    durationMs = 1000L,
+                    sourceState = SourceState.AVAILABLE,
+                    contentSignature = "sig-1",
+                ),
+            ),
+        )
+        val pipeline = FeaturePipeline(
+            gateway = gateway,
+            repository = repository,
+            testResourceScanner = firstScanner,
+        )
+        pipeline.scanAndProcess(ScanSource.TEST_RESOURCES)
+
+        val secondScanner = object : com.orion.blaster.core.scanner.LocalSongScanner {
+            override fun scan(): List<ScannedLocalSong> = listOf(
+                ScannedLocalSong(
+                    localSongId = "song-change",
+                    uri = "content://media/change",
+                    title = "Title",
+                    artist = "Artist",
+                    album = "Album",
+                    durationMs = 1000L,
+                    sizeBytes = null,
+                    dateModified = null,
+                    mimeType = null,
+                    sourceState = SourceState.AVAILABLE,
+                    contentSignature = "sig-2",
+                ),
+            )
+        }
+        val pipelineSecond = FeaturePipeline(
+            gateway = gateway,
+            repository = repository,
+            testResourceScanner = secondScanner,
+        )
+        val summary = pipelineSecond.scanAndProcess(ScanSource.TEST_RESOURCES)
+
+        assertEquals(1, summary.changedCount)
+        assertEquals(1, summary.matchedCount)
+        assertEquals(LifecycleState.CANDIDATE_ASSOCIATED, repository.getResult("song-change")?.lifecycleState)
+    }
+
+    @Test
+    fun scan_and_process_unchanged_song_skips_match() = runBlocking {
+        val repository = InMemoryFeatureRepository()
+        val gateway = QueueGateway(listOf(reliableResponse("song-same")))
+        val scanner = TestLocalSongScanner(
+            records = listOf(
+                com.orion.blaster.core.scanner.TestSongRecord(
+                    localSongId = "song-same",
+                    uri = "content://media/same",
+                    title = "Title",
+                    artist = "Artist",
+                    album = "Album",
+                    durationMs = 1000L,
+                    sourceState = SourceState.AVAILABLE,
+                    contentSignature = "sig-stable",
+                ),
+            ),
+        )
+        val pipeline = FeaturePipeline(
+            gateway = gateway,
+            repository = repository,
+            testResourceScanner = scanner,
+        )
+        pipeline.scanAndProcess(ScanSource.TEST_RESOURCES)
+        val summary = pipeline.scanAndProcess(ScanSource.TEST_RESOURCES)
+
+        assertEquals(1, summary.unchangedCount)
+        assertEquals(0, summary.matchedCount)
+    }
+
+    @Test
+    fun scan_and_process_marks_missing_previous_song_as_deleted() = runBlocking {
+        val repository = InMemoryFeatureRepository()
+        val gateway = QueueGateway(listOf(reliableResponse("song-keep")))
+        val firstScanner = TestLocalSongScanner(
+            records = listOf(
+                com.orion.blaster.core.scanner.TestSongRecord(
+                    localSongId = "song-delete",
+                    uri = "content://media/delete",
+                    title = "Delete Me",
+                    artist = "Artist",
+                    album = "Album",
+                    durationMs = 1000L,
+                    sourceState = SourceState.AVAILABLE,
+                    contentSignature = "sig-del",
+                ),
+            ),
+        )
+        val firstPipeline = FeaturePipeline(
+            gateway = gateway,
+            repository = repository,
+            testResourceScanner = firstScanner,
+        )
+        firstPipeline.scanAndProcess(ScanSource.TEST_RESOURCES)
+
+        val secondScanner = TestLocalSongScanner(records = emptyList())
+        val secondPipeline = FeaturePipeline(
+            gateway = gateway,
+            repository = repository,
+            testResourceScanner = secondScanner,
+        )
+        val summary = secondPipeline.scanAndProcess(ScanSource.TEST_RESOURCES)
+
+        assertEquals(1, summary.deletedCount)
+        assertEquals(LifecycleState.SKIPPED, repository.getResult("song-delete")?.lifecycleState)
+    }
+
+    @Test
+    fun scan_and_process_unavailable_song_skips_match_and_sets_waiting_state() = runBlocking {
+        val repository = InMemoryFeatureRepository()
+        val gateway = QueueGateway(emptyList())
+        val scanner = TestLocalSongScanner(
+            records = listOf(
+                com.orion.blaster.core.scanner.TestSongRecord(
+                    localSongId = "song-unavailable",
+                    uri = null,
+                    sourceState = SourceState.UNAVAILABLE,
+                    contentSignature = null,
+                ),
+            ),
+        )
+        val pipeline = FeaturePipeline(
+            gateway = gateway,
+            repository = repository,
+            testResourceScanner = scanner,
+        )
+
+        val summary = pipeline.scanAndProcess(ScanSource.TEST_RESOURCES)
+
+        assertEquals(1, summary.unavailableCount)
+        assertEquals(0, summary.matchedCount)
+        assertEquals(LifecycleState.WAITING_TO_CONTINUE, repository.getResult("song-unavailable")?.lifecycleState)
+        assertNull(repository.getResult("song-unavailable")?.association)
     }
 
     private class QueueGateway(responses: List<MatchResponse>) : CloudMatchGateway {

@@ -496,11 +496,11 @@ MVP-2 需要为 MVP-3 保留以下交接点：
 
 里程碑总览：
 
-- [ ] 里程碑 1：模型与契约基线
-- [ ] 里程碑 2：扫描与基础信息提取
-- [ ] 里程碑 3：增量判定与批处理编排
-- [ ] 里程碑 4：Mock 匹配全分支集成
-- [ ] 里程碑 5：Demo 接入与最终验收
+- [x] 里程碑 1：模型与契约基线（已完成）
+- [x] 里程碑 2：扫描与基础信息提取（已完成）
+- [x] 里程碑 3：增量判定与批处理编排（已完成）
+- [x] 里程碑 4：Mock 匹配全分支集成（已完成）
+- [x] 里程碑 5：Demo 接入与最终验收（已完成）
 
 ### 17.1 里程碑 1：模型与契约基线
 
@@ -525,6 +525,14 @@ MVP-2 需要为 MVP-3 保留以下交接点：
 - 模型/接口编译通过。
 - 契约测试覆盖关键字段与最小枚举语义。
 
+完成产物：
+
+- `LocalSong` 已扩展 `uri/sizeBytes/dateModified/mimeType/contentSignature`，并保持可空兼容。
+- `BasicSongInfo` 已扩展 `source/qualityFlags` 并提供默认值。
+- 已新增 `BasicInfoSource`、`QualityFlag` 最小枚举集合。
+- `FeatureRepository` 与 `InMemoryFeatureRepository` 已落地 signature 读写、删除/不可访问标记、按状态查询契约。
+- 本里程碑不包含扫描器实现、metadata 提取器实现和 signature 计算流程实现。
+
 ### 17.2 里程碑 2：扫描与基础信息提取
 
 目标：
@@ -548,6 +556,13 @@ MVP-2 需要为 MVP-3 保留以下交接点：
 - 扫描输出和基础信息输出满足 Section 3/4/5/6 契约。
 - `scanner/metadata/signature` 单测稳定通过。
 
+完成产物：
+
+- 已新增 `LocalSongScanner` 抽象与 `TestLocalSongScanner` 测试实现，支持稳定测试资源扫描输入。
+- 已新增 `BasicInfoExtractor`，实现 MediaStore -> MetadataRetriever -> 文件名兜底优先级链路。
+- 已新增 `contentSignature` 生成器，固定字段顺序、`<null>` 占位、UTF-8 和 `SHA-256`，并在降级输入时产出 `DEGRADED_SIGNATURE_INPUT` 标记。
+- 已补齐 `scanner`、`metadata`、`signature` 三组单元测试并通过。
+
 ### 17.3 里程碑 3：增量判定与批处理编排
 
 目标：
@@ -570,6 +585,14 @@ MVP-2 需要为 MVP-3 保留以下交接点：
 - 未变化歌曲不触发重复匹配可被稳定验证。
 - `pipeline-batch/repository-delta` 单测通过。
 
+完成产物：
+
+- 已新增 `scanAndProcess(source, forceScenario?)` 批处理入口，并保留 `process(localSong)` 兼容路径。
+- 已落地新增/变更/未变化/删除/不可访问判定，未变化歌曲跳过匹配并保留历史结果。
+- 已新增 `ScanSource`、`ScanProcessSummary` 类型用于批处理输入与统计输出。
+- 已在 repository 层补充 `getAllLocalSongIds()` 并完成内存实现，支持删除差集判定。
+- 已补齐 `pipeline-batch` 与 `repository-delta` 对应测试场景并通过回归。
+
 ### 17.4 里程碑 4：Mock 匹配全分支集成
 
 目标：
@@ -590,6 +613,14 @@ MVP-2 需要为 MVP-3 保留以下交接点：
 
 - 集成测试能够稳定覆盖四分支与增量行为。
 - 集成层覆盖与 Section 14 验收分支要求一致。
+
+完成产物：
+
+- 已新增 `Mvp2IntegrationTest`，基于 `scanAndProcess + ResultProvider` 验证 reliable/candidate/none/error 四分支端到端链路。
+- 已验证 error 分支重试与失败口径：`retryCount` 递增、最终状态 `FAILED`、`lastReason` 保留。
+- 已验证“未变化跳过匹配”行为：重复扫描不重复调用 `matchByBasicInfo`。
+- 已验证“signature 变化重匹配”行为：同歌 signature 变化后触发重新匹配并更新状态。
+- Section 13 固定主链路 1-6 已具备对应自动化集成测试覆盖并通过。
 
 ### 17.5 里程碑 5：Demo 接入与最终验收
 
@@ -613,3 +644,21 @@ MVP-2 需要为 MVP-3 保留以下交接点：
 
 - Section 14 全量验收条目可由测试结果与 demo 证据一一对应。
 - MVP-2 文档定义能力可被稳定复现与回归验证。
+
+完成产物：
+
+- Demo 已升级为 MVP-2 闭环：扫描源选择 -> 场景选择 -> 执行扫描匹配 -> 展示批处理摘要与结果列表。
+- Demo 已支持二次扫描（changed-signature）入口，用于演示未变化跳过与 signature 变化重匹配。
+- `MEDIA_STORE` 在 demo 侧提供占位提示，不阻塞 `TEST_RESOURCES` 主验收路径。
+- Demo 结果展示已包含：
+  - 批处理摘要：`scanned/new/changed/unchanged/deleted/unavailable/matched/skipped`
+  - 歌曲结果：`localSongId/lifecycleState/contentSignature/association/candidates/lastReason`
+
+验收记录：
+
+- 命令通过：`./gradlew --no-daemon :core:test`
+- 命令通过：`./gradlew --no-daemon :core:assemble :demo:assembleDebug`
+- Demo 输出文本样例（节选）：
+  - `summary: scanned=3, new=2, changed=0, unchanged=0, deleted=0, unavailable=1, matched=2, skipped=1`
+  - `demo-song-1 | state=RELIABLY_ASSOCIATED | signature=sig-stable-1 | association=cloud-demo-song-1 | candidates=0 | lastReason=null`
+  - `demo-song-3 | state=WAITING_TO_CONTINUE | signature=null | association=null | candidates=0 | lastReason=unavailable`

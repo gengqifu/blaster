@@ -6,6 +6,21 @@ enum class SourceState {
     DELETED,
 }
 
+enum class BasicInfoSource {
+    MEDIA_STORE,
+    METADATA_RETRIEVER,
+    FILENAME_FALLBACK,
+    TEST_CONSTRUCTED,
+}
+
+enum class QualityFlag {
+    MISSING_FIELD,
+    GARBLED_TEXT,
+    CONFLICTING_METADATA,
+    FALLBACK_USED,
+    DEGRADED_SIGNATURE_INPUT,
+}
+
 data class LocalSong(
     val localSongId: String,
     val title: String?,
@@ -13,6 +28,11 @@ data class LocalSong(
     val album: String?,
     val durationMs: Long?,
     val sourceState: SourceState,
+    val uri: String? = null,
+    val sizeBytes: Long? = null,
+    val dateModified: Long? = null,
+    val mimeType: String? = null,
+    val contentSignature: String? = null,
 )
 
 data class BasicSongInfo(
@@ -21,6 +41,8 @@ data class BasicSongInfo(
     val artist: String?,
     val album: String?,
     val durationMs: Long?,
+    val source: BasicInfoSource = BasicInfoSource.TEST_CONSTRUCTED,
+    val qualityFlags: Set<QualityFlag> = emptySet(),
 )
 
 enum class MatchResult {

@@ -1,6 +1,9 @@
 <resources>
     <string name="app_name">Blaster Demo</string>
-    <string name="demo_title">MVP-1 Mock Loop Demo</string>
-    <string name="run_pipeline">Run Pipeline</string>
+    <string name="demo_title">MVP-2 Scan and Match Demo</string>
+    <string name="scan_source">Scan Source</string>
+    <string name="match_scenario">Match Scenario</string>
+    <string name="run_pipeline">Run Scan + Match</string>
+    <string name="run_changed_scan">Run Changed-Signature Scan</string>
     <string name="mark_outdated">Mark OUTDATED</string>
 </resources>

@@ -6,9 +6,11 @@ import com.orion.blaster.core.model.CloudCandidate
 import com.orion.blaster.core.model.LifecycleState
 import com.orion.blaster.core.model.MatchResponse
 import com.orion.blaster.core.model.MatchResult
+import com.orion.blaster.core.model.SourceState
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class InMemoryFeatureRepositoryTest {
@@ -114,6 +116,108 @@ class InMemoryFeatureRepositoryTest {
         assertEquals(LifecycleState.WAITING_TO_CONTINUE, result?.lifecycleState)
         assertNotNull(result?.association)
         assertEquals("degraded", repository.getLastReason("song-5"))
+    }
+
+    @Test
+    fun save_and_get_content_signature() {
+        repository.saveContentSignature(localSongId = "song-signature", contentSignature = "abc123")
+        assertEquals("abc123", repository.getContentSignature("song-signature"))
+    }
+
+    @Test
+    fun mark_deleted_or_unavailable_updates_state_and_keeps_reason() {
+        repository.saveMatchResult(
+            localSongId = "song-6",
+            matchResponse = noneResponse(),
+            lifecycleState = LifecycleState.UNASSOCIATED,
+            retryCount = 0,
+            lastReason = "none",
+            updatedAtMs = 1L,
+        )
+
+        repository.markDeletedOrUnavailable(
+            localSongId = "song-6",
+            sourceState = SourceState.DELETED,
+            updatedAtMs = 2L,
+            lastReason = "removed_from_scan",
+        )
+        assertEquals(LifecycleState.SKIPPED, repository.getResult("song-6")?.lifecycleState)
+        assertEquals("removed_from_scan", repository.getLastReason("song-6"))
+
+        repository.markDeletedOrUnavailable(
+            localSongId = "song-6",
+            sourceState = SourceState.UNAVAILABLE,
+            updatedAtMs = 3L,
+            lastReason = "permission_denied",
+        )
+        assertEquals(LifecycleState.WAITING_TO_CONTINUE, repository.getResult("song-6")?.lifecycleState)
+        assertEquals("permission_denied", repository.getLastReason("song-6"))
+    }
+
+    @Test
+    fun get_by_lifecycle_states_returns_filtered_results() {
+        repository.saveMatchResult(
+            localSongId = "song-candidate",
+            matchResponse = candidateResponse("song-candidate"),
+            lifecycleState = LifecycleState.CANDIDATE_ASSOCIATED,
+            retryCount = 0,
+            lastReason = null,
+            updatedAtMs = 10L,
+        )
+        repository.saveMatchResult(
+            localSongId = "song-unassociated",
+            matchResponse = noneResponse(),
+            lifecycleState = LifecycleState.UNASSOCIATED,
+            retryCount = 0,
+            lastReason = null,
+            updatedAtMs = 11L,
+        )
+        repository.saveMatchResult(
+            localSongId = "song-reliable",
+            matchResponse = reliableResponse("song-reliable"),
+            lifecycleState = LifecycleState.RELIABLY_ASSOCIATED,
+            retryCount = 0,
+            lastReason = null,
+            updatedAtMs = 12L,
+        )
+
+        val filtered = repository.getByLifecycleStates(
+            setOf(LifecycleState.CANDIDATE_ASSOCIATED, LifecycleState.UNASSOCIATED),
+        )
+
+        val ids = filtered.map { it.localSongId }.toSet()
+        assertEquals(2, ids.size)
+        assertTrue(ids.contains("song-candidate"))
+        assertTrue(ids.contains("song-unassociated"))
+    }
+
+    @Test
+    fun get_all_local_song_ids_returns_stable_set() {
+        repository.saveLocalSong(
+            com.orion.blaster.core.model.LocalSong(
+                localSongId = "song-a",
+                title = null,
+                artist = null,
+                album = null,
+                durationMs = null,
+                sourceState = SourceState.AVAILABLE,
+            ),
+        )
+        repository.saveLocalSong(
+            com.orion.blaster.core.model.LocalSong(
+                localSongId = "song-b",
+                title = null,
+                artist = null,
+                album = null,
+                durationMs = null,
+                sourceState = SourceState.UNAVAILABLE,
+            ),
+        )
+
+        val ids = repository.getAllLocalSongIds()
+        assertEquals(2, ids.size)
+        assertTrue(ids.contains("song-a"))
+        assertTrue(ids.contains("song-b"))
     }
 
     private fun reliableResponse(localSongId: String): MatchResponse {
