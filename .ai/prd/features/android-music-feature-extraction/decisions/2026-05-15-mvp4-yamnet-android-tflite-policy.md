@@ -22,25 +22,38 @@ Leaving those choices open would make the repository contract, scheduler semanti
    - model may live in test resources or a development package
    - MVP-4 does NOT decide final production packaging
    - MVP-4 does NOT decide built-in versus dynamic delivery
-8. License handling for MVP-4 MUST pass a redistribution gate before implementation continues:
+8. MVP-4 MUST treat model sourcing as a two-stage strategy:
+   - demo/development validation MAY use a bundled model resource
+   - productization MUST preserve a cloud-download-capable model delivery direction
+   - first implementation design MUST NOT hardcode model loading so tightly that a later downloaded-file source cannot be introduced
+9. License handling for MVP-4 MUST pass a redistribution gate before implementation continues:
    - the selected artifact must have an officially attributable source
    - the applicable upstream license/terms and any required notice handling must be identified
    - if those terms cannot be confirmed, MVP-4 implementation MUST stop and the plan MUST be updated before any further code integration
-9. MVP-4 minimum feasibility gate MUST require one Android-side validation path that can:
+10. MVP-4 minimum feasibility gate MUST require one Android-side validation path that can:
    - load the selected model
    - execute at least one inference
    - return a non-empty embedding tensor or an explicit model-unsupported failure reason
-10. If model source, licensing, Android loading, runtime integration, or the minimum feasibility gate fails, implementation MUST stop at MVP-4 milestone 1 and update the plan/decision log before continuing.
+11. MVP-4 milestone 1 MUST include a real engineering feasibility gate:
+   - minimum TFLite runtime integration
+   - a real model artifact available to the app
+   - one real model load
+   - one real inference attempt
+12. Documentation and ADR updates alone do NOT satisfy MVP-4 milestone 1 completion.
+13. If model source, licensing, Android loading, runtime integration, or the minimum feasibility gate fails, implementation MUST stop at MVP-4 milestone 1 and update the plan/decision log before continuing.
 
 ## Impact Scope
 
 - Affects MVP-4 document Section 5, milestone 1 exit criteria, Android dependency selection, model asset handling, package budget discussion, and demo feasibility expectations.
+- Requires MVP-4 documentation to distinguish bundled-model validation from later cloud-download productization direction.
 - Does not commit MVP-4 to a production packaging strategy.
 - Does not change MVP-1 through MVP-3 cloud match semantics.
 
 ## Alternatives Considered
 
 - Implement YAMNet and VGGish in parallel: rejected because it would duplicate work before a single validated primary path exists.
+- Start with cloud download even for the first demo validation: rejected because it slows the fastest possible feasibility loop and adds non-essential moving parts to milestone 1.
+- Keep milestone 1 at document-only level: rejected because MVP-4 cannot be considered started until a real model load and inference path has been exercised.
 - Pick VGGish as primary immediately: rejected because the current MVP-4 direction already prefers YAMNet and there is no local evidence yet that YAMNet is blocked.
 - Accept an unofficial or unattributed model artifact: rejected because it would make license and reproducibility review unstable.
 - Treat package budget as out of scope: rejected because MVP-4 explicitly needs package impact as a later decision input.
