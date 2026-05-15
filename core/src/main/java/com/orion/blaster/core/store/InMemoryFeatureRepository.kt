@@ -1,6 +1,7 @@
 package com.orion.blaster.core.store
 
 import com.orion.blaster.core.model.BasicSongInfo
+import com.orion.blaster.core.model.AudioIdentitySummary
 import com.orion.blaster.core.model.LifecycleState
 import com.orion.blaster.core.model.LocalSong
 import com.orion.blaster.core.model.LocalSongResult
@@ -12,6 +13,7 @@ class InMemoryFeatureRepository : FeatureRepository {
     private val songs = ConcurrentHashMap<String, LocalSong>()
     private val basicInfos = ConcurrentHashMap<String, BasicSongInfo>()
     private val contentSignatures = ConcurrentHashMap<String, String?>()
+    private val audioIdentitySummaries = ConcurrentHashMap<String, AudioIdentitySummary>()
     private val states = ConcurrentHashMap<String, StoredState>()
 
     override fun saveLocalSong(localSong: LocalSong) {
@@ -22,11 +24,23 @@ class InMemoryFeatureRepository : FeatureRepository {
         basicInfos[basicSongInfo.localSongId] = basicSongInfo
     }
 
+    override fun getLocalSong(localSongId: String): LocalSong? = songs[localSongId]
+
+    override fun getBasicInfo(localSongId: String): BasicSongInfo? = basicInfos[localSongId]
+
     override fun saveContentSignature(localSongId: String, contentSignature: String?) {
         contentSignatures[localSongId] = contentSignature
     }
 
     override fun getContentSignature(localSongId: String): String? = contentSignatures[localSongId]
+
+    override fun saveAudioIdentitySummary(summary: AudioIdentitySummary) {
+        audioIdentitySummaries[summary.localSongId] = summary
+    }
+
+    override fun getAudioIdentitySummary(localSongId: String): AudioIdentitySummary? {
+        return audioIdentitySummaries[localSongId]
+    }
 
     override fun saveMatchResult(
         localSongId: String,

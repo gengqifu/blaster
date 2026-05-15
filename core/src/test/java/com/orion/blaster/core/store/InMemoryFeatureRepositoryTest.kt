@@ -1,6 +1,7 @@
 package com.orion.blaster.core.store
 
 import com.orion.blaster.core.model.AssociationStage
+import com.orion.blaster.core.model.AudioIdentitySummary
 import com.orion.blaster.core.model.CloudAssociation
 import com.orion.blaster.core.model.CloudCandidate
 import com.orion.blaster.core.model.LifecycleState
@@ -122,6 +123,53 @@ class InMemoryFeatureRepositoryTest {
     fun save_and_get_content_signature() {
         repository.saveContentSignature(localSongId = "song-signature", contentSignature = "abc123")
         assertEquals("abc123", repository.getContentSignature("song-signature"))
+    }
+
+    @Test
+    fun save_and_get_local_song_and_basic_info() {
+        val localSong = com.orion.blaster.core.model.LocalSong(
+            localSongId = "song-local",
+            title = "title",
+            artist = "artist",
+            album = null,
+            durationMs = 100L,
+            sourceState = SourceState.AVAILABLE,
+            uri = "content://song-local",
+            contentSignature = "sig-local",
+        )
+        val basicInfo = com.orion.blaster.core.model.BasicSongInfo(
+            localSongId = "song-local",
+            title = "title",
+            artist = "artist",
+            album = null,
+            durationMs = 100L,
+        )
+
+        repository.saveLocalSong(localSong)
+        repository.saveBasicInfo(basicInfo)
+
+        assertEquals(localSong, repository.getLocalSong("song-local"))
+        assertEquals(basicInfo, repository.getBasicInfo("song-local"))
+    }
+
+    @Test
+    fun save_and_get_audio_identity_summary() {
+        val summary = AudioIdentitySummary(
+            localSongId = "song-audio",
+            algorithm = "chromaprint-compatible",
+            algorithmVersion = "mvp3-mock",
+            clipPolicy = "middle:30s",
+            payloadEncoding = "base64",
+            payloadDigest = "sha256:abc",
+            costMs = 42L,
+            lastReason = null,
+            updatedAtMs = 1000L,
+        )
+
+        repository.saveAudioIdentitySummary(summary)
+
+        assertEquals(summary, repository.getAudioIdentitySummary("song-audio"))
+        assertNull(repository.getAudioIdentitySummary("missing"))
     }
 
     @Test

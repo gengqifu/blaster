@@ -17,8 +17,12 @@ data class BasicInfoMatchRequest(
 
 data class AudioIdentityMatchRequest(
     val localSongId: String,
+    val durationMs: Long?,
+    val clipPolicy: String,
     val basicInfo: BasicSongInfo,
     val algorithm: String,
+    val algorithmVersion: String,
+    val payloadEncoding: String,
     val payload: ByteArray,
     val forceScenario: String? = null,
 )

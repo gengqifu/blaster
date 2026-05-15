@@ -1,6 +1,8 @@
 package com.orion.blaster.core.mock
 
+import com.orion.blaster.core.gateway.AudioIdentityMatchRequest
 import com.orion.blaster.core.gateway.BasicInfoMatchRequest
+import com.orion.blaster.core.model.AssociationStage
 import com.orion.blaster.core.model.BasicSongInfo
 import com.orion.blaster.core.model.MatchResult
 import kotlinx.coroutines.runBlocking
@@ -102,6 +104,36 @@ class MockCloudMatchGatewayTest {
         assertNull(response.rejectReason)
     }
 
+    @Test
+    fun audio_identity_force_scenario_covers_all_six_mvp3_scenarios() = runBlocking {
+        val gateway = MockCloudMatchGateway()
+
+        val reliable = gateway.matchByAudioIdentity(audioRequest(forceScenario = "RELIABLE"))
+        val candidate = gateway.matchByAudioIdentity(audioRequest(forceScenario = "CANDIDATE"))
+        val none = gateway.matchByAudioIdentity(audioRequest(forceScenario = "NONE"))
+        val error = gateway.matchByAudioIdentity(audioRequest(forceScenario = "ERROR"))
+        val timeout = gateway.matchByAudioIdentity(audioRequest(forceScenario = "TIMEOUT"))
+        val degraded = gateway.matchByAudioIdentity(audioRequest(forceScenario = "DEGRADED"))
+
+        assertEquals(MatchResult.RELIABLE, reliable.result)
+        assertNotNull(reliable.association)
+        assertEquals(AssociationStage.AUDIO_IDENTITY, reliable.association?.stage)
+
+        assertEquals(MatchResult.CANDIDATE, candidate.result)
+        assertEquals(1, candidate.candidates.size)
+
+        assertEquals(MatchResult.NONE, none.result)
+
+        assertEquals(MatchResult.ERROR, error.result)
+        assertEquals("error", error.rejectReason)
+
+        assertEquals(MatchResult.ERROR, timeout.result)
+        assertEquals("timeout", timeout.rejectReason)
+
+        assertEquals(MatchResult.ERROR, degraded.result)
+        assertEquals("degraded", degraded.rejectReason)
+    }
+
     private fun request(
         localSongId: String = "song-1",
         title: String? = "hello",
@@ -114,6 +146,29 @@ class MockCloudMatchGatewayTest {
                 localSongId = localSongId,
                 title = title,
                 artist = artist,
+                album = null,
+                durationMs = 120000L,
+            ),
+            forceScenario = forceScenario,
+        )
+    }
+
+    private fun audioRequest(
+        localSongId: String = "song-1",
+        forceScenario: String? = null,
+    ): AudioIdentityMatchRequest {
+        return AudioIdentityMatchRequest(
+            localSongId = localSongId,
+            durationMs = 120000L,
+            clipPolicy = "middle:30s",
+            algorithm = "chromaprint-compatible",
+            algorithmVersion = "mvp3-mock",
+            payloadEncoding = "bytes",
+            payload = byteArrayOf(1, 2, 3),
+            basicInfo = BasicSongInfo(
+                localSongId = localSongId,
+                title = "hello",
+                artist = "adele",
                 album = null,
                 durationMs = 120000L,
             ),

@@ -100,6 +100,18 @@ data class LocalFeature(
     val generatedAtMs: Long,
 )
 
+data class AudioIdentitySummary(
+    val localSongId: String,
+    val algorithm: String,
+    val algorithmVersion: String,
+    val clipPolicy: String,
+    val payloadEncoding: String,
+    val payloadDigest: String?,
+    val costMs: Long?,
+    val lastReason: String?,
+    val updatedAtMs: Long,
+)
+
 data class LocalSongResult(
     val localSongId: String,
     val lifecycleState: LifecycleState,

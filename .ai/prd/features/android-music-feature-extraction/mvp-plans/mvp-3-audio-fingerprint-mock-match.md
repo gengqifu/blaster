@@ -429,7 +429,7 @@ MVP-3 需要为 MVP-4 保留以下交接点：
 里程碑总览：
 
 - [x] 里程碑 1：文档、ADR 与契约基线（已完成）
-- [ ] 里程碑 2：音频识别队列、存储与 Mock 分支
+- [x] 里程碑 2：音频识别队列、存储与 Mock 分支（已完成）
 - [ ] 里程碑 3：PCM 解码与片段策略
 - [ ] 里程碑 4：Chromaprint Native 指纹接入
 - [ ] 里程碑 5：Scheduler 与 Pipeline 音频阶段
@@ -499,6 +499,14 @@ MVP-3 需要为 MVP-4 保留以下交接点：
 完成产物：
 
 - 音频识别队列、摘要存储接口、Mock 指纹分支和对应单元测试。
+
+验收记录：
+
+- 已补齐 `AudioIdentityMatchRequest` 外层字段：`durationMs`、`clipPolicy`、`algorithmVersion`、`payloadEncoding`、`forceScenario`。
+- 已新增音频识别摘要模型与 repository 读写能力。
+- 已新增 `AudioIdentityQueue`，只从 `CANDIDATE_ASSOCIATED` / `UNASSOCIATED` 生成待处理项。
+- 已扩展 `MockCloudMatchGateway.matchByAudioIdentity` 覆盖 reliable/candidate/none/error/timeout/degrade。
+- 命令通过：`./gradlew :core:test --no-daemon`。
 
 ### 15.3 里程碑 3：PCM 解码与片段策略
 

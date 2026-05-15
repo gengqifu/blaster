@@ -1,6 +1,7 @@
 package com.orion.blaster.core.store
 
 import com.orion.blaster.core.model.BasicSongInfo
+import com.orion.blaster.core.model.AudioIdentitySummary
 import com.orion.blaster.core.model.LifecycleState
 import com.orion.blaster.core.model.LocalSong
 import com.orion.blaster.core.model.LocalSongResult
@@ -12,9 +13,17 @@ interface FeatureRepository {
 
     fun saveBasicInfo(basicSongInfo: BasicSongInfo)
 
+    fun getLocalSong(localSongId: String): LocalSong?
+
+    fun getBasicInfo(localSongId: String): BasicSongInfo?
+
     fun saveContentSignature(localSongId: String, contentSignature: String?)
 
     fun getContentSignature(localSongId: String): String?
+
+    fun saveAudioIdentitySummary(summary: AudioIdentitySummary)
+
+    fun getAudioIdentitySummary(localSongId: String): AudioIdentitySummary?
 
     fun saveMatchResult(
         localSongId: String,
