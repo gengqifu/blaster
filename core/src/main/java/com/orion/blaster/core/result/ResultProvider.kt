@@ -21,6 +21,8 @@ class ResultProvider(
         return state == LifecycleState.DISCOVERED ||
             state == LifecycleState.BASIC_INFO_READY ||
             state == LifecycleState.BASIC_MATCHING ||
+            state == LifecycleState.AUDIO_IDENTIFYING ||
+            state == LifecycleState.AUDIO_MATCHING ||
             state == LifecycleState.WAITING_TO_CONTINUE
     }
 

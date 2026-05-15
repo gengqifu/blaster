@@ -1,5 +1,7 @@
 package com.orion.blaster.core.pipeline
 
+import com.orion.blaster.core.audioidentity.AudioIdentifyInputGenerator
+import com.orion.blaster.core.audioidentity.AudioIdentifyInputResult
 import com.orion.blaster.core.gateway.BasicInfoMatchRequest
 import com.orion.blaster.core.gateway.CloudMatchGateway
 import com.orion.blaster.core.metadata.BasicInfoExtractionInput
@@ -12,6 +14,7 @@ import com.orion.blaster.core.model.MatchResult
 import com.orion.blaster.core.model.SourceState
 import com.orion.blaster.core.model.toLifecycleState
 import com.orion.blaster.core.scanner.LocalSongScanner
+import com.orion.blaster.core.scheduler.AudioIdentityScheduler
 import com.orion.blaster.core.store.FeatureRepository
 
 class FeaturePipeline(
@@ -20,6 +23,7 @@ class FeaturePipeline(
     private val mediaStoreScanner: LocalSongScanner? = null,
     private val testResourceScanner: LocalSongScanner? = null,
     private val basicInfoExtractor: BasicInfoExtractor = BasicInfoExtractor(),
+    private val audioIdentifyInputGenerator: AudioIdentifyInputGenerator? = null,
     private val maxRetryCount: Int = 2,
     private val clock: () -> Long = { System.currentTimeMillis() },
 ) {
@@ -158,6 +162,162 @@ class FeaturePipeline(
         )
     }
 
+    suspend fun processAudioIdentityQueue(
+        scheduler: AudioIdentityScheduler,
+        forceScenario: String? = null,
+        maxBatchSize: Int = Int.MAX_VALUE,
+    ): AudioIdentityProcessSummary {
+        val schedule = scheduler.schedule(maxBatchSize)
+        if (schedule.waitingReason != null) {
+            schedule.waitingItems.forEach { item ->
+                repository.saveLifecycleState(
+                    localSongId = item.localSongId,
+                    lifecycleState = LifecycleState.WAITING_TO_CONTINUE,
+                    retryCount = repository.getRetryCount(item.localSongId),
+                    lastReason = schedule.waitingReason,
+                    updatedAtMs = clock(),
+                )
+            }
+            return AudioIdentityProcessSummary(
+                scheduledCount = 0,
+                waitingCount = schedule.waitingItems.size,
+                failedCount = 0,
+                reliableCount = 0,
+                candidateCount = 0,
+                noneCount = 0,
+            )
+        }
+
+        val generator = audioIdentifyInputGenerator
+            ?: throw IllegalStateException("AudioIdentifyInputGenerator is not configured")
+
+        var failedCount = 0
+        var reliableCount = 0
+        var candidateCount = 0
+        var noneCount = 0
+
+        schedule.runnableItems.forEach { item ->
+            val finalState = processAudioIdentityItem(item, generator, forceScenario)
+            when (finalState) {
+                LifecycleState.RELIABLY_ASSOCIATED -> reliableCount += 1
+                LifecycleState.CANDIDATE_ASSOCIATED -> candidateCount += 1
+                LifecycleState.UNASSOCIATED -> noneCount += 1
+                LifecycleState.FAILED, LifecycleState.SKIPPED -> failedCount += 1
+                else -> Unit
+            }
+        }
+
+        return AudioIdentityProcessSummary(
+            scheduledCount = schedule.runnableItems.size,
+            waitingCount = 0,
+            failedCount = failedCount,
+            reliableCount = reliableCount,
+            candidateCount = candidateCount,
+            noneCount = noneCount,
+        )
+    }
+
+    private suspend fun processAudioIdentityItem(
+        item: com.orion.blaster.core.audioqueue.AudioIdentityQueueItem,
+        generator: AudioIdentifyInputGenerator,
+        forceScenario: String?,
+    ): LifecycleState {
+        repository.saveLifecycleState(
+            localSongId = item.localSongId,
+            lifecycleState = LifecycleState.AUDIO_IDENTIFYING,
+            retryCount = repository.getRetryCount(item.localSongId),
+            lastReason = null,
+            updatedAtMs = clock(),
+        )
+
+        return when (val generated = generator.generate(item, forceScenario)) {
+            is AudioIdentifyInputResult.Failure -> handleAudioIdentityGenerationFailure(item.localSongId, generated)
+            is AudioIdentifyInputResult.Success -> {
+                repository.saveAudioIdentitySummary(generated.summary)
+                runAudioIdentityMatch(generated.request)
+            }
+        }
+    }
+
+    private fun handleAudioIdentityGenerationFailure(
+        localSongId: String,
+        failure: AudioIdentifyInputResult.Failure,
+    ): LifecycleState {
+        val retryCount = if (failure.retryable) {
+            repository.getRetryCount(localSongId) + 1
+        } else {
+            repository.getRetryCount(localSongId)
+        }
+        val state = if (failure.retryable && retryCount <= maxRetryCount) {
+            LifecycleState.WAITING_TO_CONTINUE
+        } else {
+            failure.terminalState
+        }
+        repository.saveLifecycleState(
+            localSongId = localSongId,
+            lifecycleState = state,
+            retryCount = retryCount,
+            lastReason = failure.reason,
+            updatedAtMs = clock(),
+        )
+        return state
+    }
+
+    private suspend fun runAudioIdentityMatch(
+        request: com.orion.blaster.core.gateway.AudioIdentityMatchRequest,
+    ): LifecycleState {
+        var attempt = repository.getRetryCount(request.localSongId)
+        while (true) {
+            repository.saveLifecycleState(
+                localSongId = request.localSongId,
+                lifecycleState = LifecycleState.AUDIO_MATCHING,
+                retryCount = attempt,
+                lastReason = null,
+                updatedAtMs = clock(),
+            )
+
+            val response = gateway.matchByAudioIdentity(request)
+            if (response.result != MatchResult.ERROR) {
+                val state = response.toLifecycleState()
+                repository.saveMatchResult(
+                    localSongId = request.localSongId,
+                    matchResponse = response,
+                    lifecycleState = state,
+                    retryCount = attempt,
+                    lastReason = response.rejectReason,
+                    updatedAtMs = clock(),
+                )
+                return state
+            }
+
+            val reason = response.rejectReason?.lowercase()
+            if (reason == "degraded") {
+                repository.saveMatchResult(
+                    localSongId = request.localSongId,
+                    matchResponse = response,
+                    lifecycleState = LifecycleState.WAITING_TO_CONTINUE,
+                    retryCount = attempt,
+                    lastReason = response.rejectReason,
+                    updatedAtMs = clock(),
+                )
+                return LifecycleState.WAITING_TO_CONTINUE
+            }
+
+            attempt += 1
+            if (attempt > maxRetryCount) {
+                repository.saveMatchResult(
+                    localSongId = request.localSongId,
+                    matchResponse = response,
+                    lifecycleState = LifecycleState.FAILED,
+                    retryCount = attempt,
+                    lastReason = response.rejectReason ?: "error",
+                    updatedAtMs = clock(),
+                )
+                return LifecycleState.FAILED
+            }
+        }
+    }
+
     private suspend fun runBasicMatch(
         localSongId: String,
         basicInfo: BasicSongInfo,
@@ -248,4 +408,13 @@ data class ScanProcessSummary(
     val unavailableCount: Int,
     val matchedCount: Int,
     val skippedCount: Int,
+)
+
+data class AudioIdentityProcessSummary(
+    val scheduledCount: Int,
+    val waitingCount: Int,
+    val failedCount: Int,
+    val reliableCount: Int,
+    val candidateCount: Int,
+    val noneCount: Int,
 )

@@ -432,7 +432,7 @@ MVP-3 需要为 MVP-4 保留以下交接点：
 - [x] 里程碑 2：音频识别队列、存储与 Mock 分支（已完成）
 - [x] 里程碑 3：PCM 解码与片段策略（已完成）
 - [x] 里程碑 4：Chromaprint Native 指纹接入（已完成）
-- [ ] 里程碑 5：Scheduler 与 Pipeline 音频阶段
+- [x] 里程碑 5：Scheduler 与 Pipeline 音频阶段（已完成）
 - [ ] 里程碑 6：Demo 接入与最终验收
 
 ### 15.1 里程碑 1：文档、ADR 与契约基线
@@ -614,6 +614,16 @@ MVP-3 需要为 MVP-4 保留以下交接点：
 完成产物：
 
 - Scheduler、pipeline 音频阶段和端到端集成测试。
+
+验收记录：
+
+- 已新增 `AudioIdentityScheduler`，支持批次调度与高成本开关、播放中、低电量、高温、前台繁忙、媒体权限不可用等保护条件。
+- 已新增 `AudioIdentifyInputGenerator` 抽象和默认实现，默认实现串联 PCM 解码、Chromaprint 指纹生成和 `AudioIdentityMatchRequest` 生成。
+- 已扩展 `FeaturePipeline`，打通 `AUDIO_IDENTIFYING -> AUDIO_MATCHING -> 最终状态`。
+- 已覆盖 audio identity reliable/candidate/none/error/timeout/degrade 状态流。
+- 已验证 timeout/error 按技术失败重试至 `FAILED`，degrade 进入 `WAITING_TO_CONTINUE` 且不增加技术 retry。
+- 已验证调度保护进入 `WAITING_TO_CONTINUE` 且不运行高成本 generator。
+- 命令通过：`./gradlew :core:test --no-daemon`。
 
 ### 15.6 里程碑 6：Demo 接入与最终验收
 
