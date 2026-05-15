@@ -272,6 +272,7 @@ MVP-3 指纹生成由 FeaturePipeline 或调度任务异步触发，不在基础
 职责分工：
 
 - `FeaturePipeline` 负责决定歌曲当前是否进入音频识别阶段、写入阶段状态和消费 Mock 比对结果。
+- `FeaturePipeline` 进入音频识别阶段前写入 `AUDIO_IDENTIFYING`，发起 `CloudMatchGateway.matchByAudioIdentity` Mock 比对前写入 `AUDIO_MATCHING`，比对完成后根据 `MatchResponse` 写入最终状态。
 - `AudioIdentityScheduler` 负责从可处理队列中按批次取任务，并根据设备条件、业务开关、重试次数决定立即执行、暂停、跳过或失败。
 
 ### 8.2 暂停条件
@@ -409,7 +410,7 @@ MVP-3 完成必须满足：
 - timeout / degrade 不扩展 `MatchResult`，只作为 `ERROR` 诊断原因。
 - 高成本任务可暂停、重试、失败或降级，且不影响基础信息结果查询。
 - ResultProvider 可查询指纹比对后的当前业务结果。
-- 构建验证通过：`./gradlew :core:assemble :demo:assembleDebug`。
+- 构建验证通过：`./gradlew :core:test :core:assemble :demo:assembleDebug`。
 - 若已引入单元测试任务，对应单元测试通过。
 
 ## 14. 与 MVP-4 的交接
