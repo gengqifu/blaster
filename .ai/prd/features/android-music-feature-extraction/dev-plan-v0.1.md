@@ -244,6 +244,13 @@
 - 高成本任务不会明显影响播放和前台交互体验。
 - 构建验证通过：`./gradlew :core:assemble :demo:assembleDebug`。
 
+### 6.7 执行拆分
+
+- MVP-3 执行按 6 个里程碑推进（文档/ADR/契约 -> 队列/存储/Mock -> PCM 解码/片段策略 -> Chromaprint Native -> Scheduler/Pipeline -> Demo/验收）。
+- MVP-3 以完整音频指纹识别功能为目标，不停留在“工程可行性 + 接口基线”。
+- Chromaprint 接入、license、ABI 和请求契约决策已固化到 MVP-3 详细计划与 ADR，后续实现按里程碑逐步闭环。
+- 详细拆分与每步完成标准见：`mvp-plans/mvp-3-audio-fingerprint-mock-match.md` 第 15 章“执行拆分（6 个里程碑）”。
+
 ## 7. MVP-4：可选本地 embedding 验证
 
 ### 7.1 开发任务

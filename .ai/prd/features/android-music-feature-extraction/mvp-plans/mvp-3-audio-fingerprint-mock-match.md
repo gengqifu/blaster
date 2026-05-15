@@ -139,9 +139,19 @@ MVP-3 使用 Chromaprint 类方案，首版标识为：
 
 - `algorithm = chromaprint-compatible`
 
-具体依赖、ABI 包体和 license 风险需要在实现前做工程确认，但 MVP-3 计划按该方案展开。
+首版接入口径已确认：
 
-MVP-3 实现启动前必须完成 Chromaprint 类库的工程可行性确认，确认项包括依赖接入方式、ABI 包体增量和 license 风险。如确认不可行，需要先更新本节算法口径和 Section 14 交接内容，不能按 `chromaprint-compatible` 直接进入实现。
+- Android 端通过 JNI/NDK 封装 Chromaprint 类库。
+- Chromaprint 以动态链接 shared library 方式接入，不采用静态链接作为首版默认。
+- 首版只构建和打包 `arm64-v8a` ABI。
+- license 口径按 LGPL 2.1 处理，随包提供必要 license / notice。
+- FFT 路线优先使用 bundled/permissive 的 KissFFT，避免引入 FFTW3/GPL 风险。
+- 不引入 FFmpeg 作为默认依赖。
+- native 构建或 Chromaprint 接入失败时，不允许降级为压缩文件 hash 或伪指纹；必须修正 native 接入或更新本文档和 ADR 后再继续。
+
+本决策记录见：
+
+- `decisions/2026-05-15-mvp3-chromaprint-android-native-policy.md`
 
 ### 5.2 输入与输出
 
@@ -190,9 +200,11 @@ MVP-3 需要生成 `AudioIdentityMatchRequest`，外层字段保持与 Tech Desi
 - `durationMs`
 - `clipPolicy`
 - `algorithm`
+- `algorithmVersion`
 - `payloadEncoding`
 - `payload`
 - `basicInfo`
+- `forceScenario`
 
 字段语义：
 
@@ -200,9 +212,15 @@ MVP-3 需要生成 `AudioIdentityMatchRequest`，外层字段保持与 Tech Desi
 - `durationMs` 用于辅助 Mock 或未来服务端候选确认。
 - `clipPolicy` 描述端侧截取策略。
 - `algorithm` 描述当前音频识别算法。
+- `algorithmVersion` 描述当前指纹算法或 native wrapper 版本。
 - `payloadEncoding` 标识 payload 编码方式。
 - `payload` 承载算法相关指纹内容。
 - `basicInfo` 作为辅助匹配信息。
+- `forceScenario` 仅用于 Mock 和 demo，不进入未来真实服务端请求契约。
+
+契约决策记录见：
+
+- `decisions/2026-05-15-mvp3-audio-identity-contract-policy.md`
 
 ## 7. 指纹 Mock 比对
 
@@ -402,3 +420,190 @@ MVP-3 需要为 MVP-4 保留以下交接点：
 - 指纹 `CANDIDATE` 后的候选歌曲是否进入本地特征兜底，按 MVP-4 计划确认。
 - `BasicSongInfo`、`durationMs`、`contentSignature`、音频处理诊断信息应可被 MVP-4 查询。
 - `FAILED`、`SKIPPED`、`WAITING_TO_CONTINUE` 不自动进入本地特征兜底。
+
+## 15. 执行拆分（6 个里程碑）
+
+在不改变 MVP-3 完整功能范围的前提下，执行按以下 6 个里程碑推进。每个里程碑都要求“实现 + 测试”闭环后再进入下一步，避免 native、解码、调度和 demo 混在同一次交付中导致验收口径漂移。
+
+里程碑总览：
+
+- [ ] 里程碑 1：文档、ADR 与契约基线
+- [ ] 里程碑 2：音频识别队列、存储与 Mock 分支
+- [ ] 里程碑 3：PCM 解码与片段策略
+- [ ] 里程碑 4：Chromaprint Native 指纹接入
+- [ ] 里程碑 5：Scheduler 与 Pipeline 音频阶段
+- [ ] 里程碑 6：Demo 接入与最终验收
+
+### 15.1 里程碑 1：文档、ADR 与契约基线
+
+目标：
+
+- 锁定 Chromaprint/native/license/ABI 决策。
+- 锁定 `AudioIdentityMatchRequest`、音频识别摘要模型和 repository 扩展接口。
+- 确保实现阶段不再遗留算法、ABI、license 和请求外层字段决策空白。
+
+实现项：
+
+- 新增 Chromaprint Android native 接入 ADR。
+- 新增音频识别请求契约 ADR。
+- 补齐本文档 Section 5.1 与 Section 6 的实现口径。
+- 在总开发计划中引用本里程碑拆分。
+
+本里程碑必过测试：
+
+- 文档检查：MVP-3 文档包含 ADR 引用、native/license/ABI 决策、字段完整的 `AudioIdentityMatchRequest` 和 6 个里程碑。
+- 契约检查：后续实现必须以 Section 6 字段为准，不能继续沿用占位版请求字段。
+
+完成标准：
+
+- 文档和 ADR 可直接指导实现。
+- 不留“先确认 Chromaprint 可行性”这类未落地前置项。
+
+完成产物：
+
+- `decisions/2026-05-15-mvp3-chromaprint-android-native-policy.md`
+- `decisions/2026-05-15-mvp3-audio-identity-contract-policy.md`
+- 本文档 Section 5.1、Section 6、Section 15。
+- `dev-plan-v0.1.md` 的 MVP-3 执行拆分引用。
+
+### 15.2 里程碑 2：音频识别队列、存储与 Mock 分支
+
+目标：
+
+- 在不接解码和 native 的前提下，先打通音频识别阶段的 Kotlin 契约、队列、存储和 Mock 状态分流。
+
+实现项：
+
+- 落地 `AudioIdentityQueue`，只允许 `CANDIDATE_ASSOCIATED` / `UNASSOCIATED` 入队。
+- repository 增加音频识别摘要读写能力，保存 algorithm、algorithmVersion、clipPolicy、payloadEncoding、payload 摘要、costMs、lastReason。
+- 补齐 `AudioIdentityMatchRequest` 外层字段。
+- 扩展 `MockCloudMatchGateway.matchByAudioIdentity` 六分支。
+
+本里程碑必过测试：
+
+- 队列测试覆盖可入队和不可入队状态。
+- 请求契约测试覆盖字段完整性和 `basicInfo` 传递。
+- Mock 指纹 reliable/candidate/none/error/timeout/degrade 六分支测试通过。
+
+完成标准：
+
+- 不依赖真实音频文件、不依赖 native，也能验证队列、请求、摘要存储和 Mock 状态分流。
+
+完成产物：
+
+- 音频识别队列、摘要存储接口、Mock 指纹分支和对应单元测试。
+
+### 15.3 里程碑 3：PCM 解码与片段策略
+
+目标：
+
+- 打通系统解码能力，并把短歌、普通歌曲、长音频的截取策略固化为可记录的 `clipPolicy`。
+
+实现项：
+
+- 基于 `MediaExtractor + MediaCodec` 实现 PCM 解码。
+- 首版验收覆盖 MP3 和 AAC/M4A。
+- 实现短歌按可用长度、普通歌曲取中间片段、长音频多段代表性截取策略。
+- 不支持格式、不可访问 URI、解码异常输出明确失败原因。
+
+本里程碑必过测试：
+
+- 解码输入参数校验测试。
+- MP3、AAC/M4A 测试资源解码路径测试。
+- 不支持格式、不可访问 URI、解码异常 reason 测试。
+- `clipPolicy` 生成测试。
+
+完成标准：
+
+- 可将支持格式解码为 PCM。
+- 失败路径不会进入伪指纹或文件 hash 兜底。
+
+完成产物：
+
+- `PcmDecoder`、片段策略实现和对应测试。
+
+### 15.4 里程碑 4：Chromaprint Native 指纹接入
+
+目标：
+
+- 通过 JNI/NDK 将 PCM 输入转换为 `chromaprint-compatible` payload。
+
+实现项：
+
+- `core` 接入 CMake/NDK `externalNativeBuild`。
+- 首版只构建和打包 `arm64-v8a`。
+- JNI wrapper 输入 PCM，输出非空 payload。
+- 保存 algorithm、algorithmVersion、payloadEncoding、payload 摘要和 costMs。
+- 随包保留必要 license / notice 文档。
+
+本里程碑必过测试：
+
+- 指纹 payload 非空测试。
+- algorithm、algorithmVersion、clipPolicy、payloadEncoding、costMs 记录测试。
+- native 构建产物打包验证。
+
+完成标准：
+
+- payload 来自 PCM 或算法要求的采样输入。
+- 不允许用 MP3/AAC/FLAC 压缩文件 hash 伪装指纹。
+- native 构建失败必须修复接入，不通过替代假实现绕过。
+
+完成产物：
+
+- Native wrapper、CMake 配置、`AudioFingerprintExtractor` 和对应测试/构建验证。
+
+### 15.5 里程碑 5：Scheduler 与 Pipeline 音频阶段
+
+目标：
+
+- 打通从待处理队列到 `CloudMatchGateway.matchByAudioIdentity` 再到 ResultProvider 查询结果的完整业务状态流。
+
+实现项：
+
+- 落地 `AudioIdentityScheduler`，支持批次、暂停、重试、失败和降级决策。
+- 增加高成本任务开关、播放中、低电量、高温、前台繁忙、权限不可用判断。
+- `FeaturePipeline` 写入 `AUDIO_IDENTIFYING -> AUDIO_MATCHING -> 最终状态`。
+- `NONE` 不消耗技术失败重试次数；timeout/error 按技术失败重试；degrade/waiting 不按技术失败处理。
+
+本里程碑必过测试：
+
+- reliable/candidate/none/error/timeout/degrade 全链路测试。
+- retry 上限后 `FAILED` 测试。
+- 播放中、低电量、高温、前台繁忙、高成本能力关闭进入 waiting/skipped reason 测试。
+
+完成标准：
+
+- ResultProvider 能查询指纹比对后的当前业务结果。
+- 基础信息结果查询不被高成本任务阻塞。
+
+完成产物：
+
+- Scheduler、pipeline 音频阶段和端到端集成测试。
+
+### 15.6 里程碑 6：Demo 接入与最终验收
+
+目标：
+
+- 输出可演示、可验收、可回归的 MVP-3 交付版本。
+
+实现项：
+
+- Demo 展示音频识别队列。
+- Demo 支持单首和批量触发音频识别。
+- Demo 展示 `AudioIdentityMatchRequest` 摘要、payload 摘要、Mock 指纹场景和最终 ResultProvider 状态。
+- Demo 支持模拟高成本能力关闭、播放中、低电量/高温等降级场景。
+
+本里程碑必过测试：
+
+- Demo 验证流程通过。
+- `core` 单测通过。
+- `./gradlew :core:test :core:assemble :demo:assembleDebug --no-daemon` 通过。
+
+完成标准：
+
+- Section 13 全量验收条目可由自动化测试结果与 demo 证据一一对应。
+- MVP-3 文档定义能力可被稳定复现与回归验证。
+
+完成产物：
+
+- Demo MVP-3 闭环、最终验收记录和构建测试通过记录。
