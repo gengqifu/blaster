@@ -428,7 +428,7 @@ MVP-3 需要为 MVP-4 保留以下交接点：
 
 里程碑总览：
 
-- [ ] 里程碑 1：文档、ADR 与契约基线
+- [x] 里程碑 1：文档、ADR 与契约基线（已完成）
 - [ ] 里程碑 2：音频识别队列、存储与 Mock 分支
 - [ ] 里程碑 3：PCM 解码与片段策略
 - [ ] 里程碑 4：Chromaprint Native 指纹接入
@@ -466,6 +466,12 @@ MVP-3 需要为 MVP-4 保留以下交接点：
 - `decisions/2026-05-15-mvp3-audio-identity-contract-policy.md`
 - 本文档 Section 5.1、Section 6、Section 15。
 - `dev-plan-v0.1.md` 的 MVP-3 执行拆分引用。
+
+验收记录：
+
+- 文档检查通过：已确认 ADR 引用、native/license/ABI 决策、字段完整的 `AudioIdentityMatchRequest` 和 6 个里程碑存在。
+- 关键内容检查通过：`2026-05-15-mvp3`、`algorithmVersion`、`forceScenario`、`AUDIO_IDENTIFYING`、`AUDIO_MATCHING`、`arm64-v8a`、`LGPL`、`执行拆分（6 个里程碑）`。
+- 本里程碑只包含文档、ADR 与契约基线，不包含业务代码实现。
 
 ### 15.2 里程碑 2：音频识别队列、存储与 Mock 分支
 
