@@ -119,22 +119,34 @@ MVP-4 默认处理以下歌曲：
 - 开关关闭时 ResultProvider 不返回 `LOCAL_FEATURE_READY`。
 - 开关重新打开后，可重新扫描符合条件的歌曲进入队列。
 
-## 5. YAMNet TFLite 验证
+## 5. YAMNet TFLite 实施准入条件
 
-### 5.1 前置确认
+### 5.1 主路径决策
 
-MVP-4 实现启动前需要完成 YAMNet TFLite 的工程可行性确认：
+MVP-4 默认且唯一主路径为 `YAMNet TFLite`。
 
-- 模型文件来源。
-- TensorFlow Lite runtime 依赖。
-- 模型文件大小。
-- runtime 包体增量。
-- license 风险。
-- Android 端加载方式。
+- `VGGish` 只作为 failover，不并行实现。
+- 若 `YAMNet` 在模型来源、license、Android 加载、runtime 集成或最小推理验证中任一项不通过，MVP-4 必须停在里程碑 1，先更新本文档与决策记录，再决定是否切换到 `VGGish`。
 
-如确认不可行，需要先更新本节模型口径，不能按 YAMNet TFLite 直接实现。
+本节实施口径以以下决策记录为准：
 
-### 5.2 验证目标
+- `decisions/2026-05-15-mvp4-yamnet-android-tflite-policy.md`
+- `decisions/2026-05-15-mvp4-local-feature-contract-policy.md`
+
+### 5.2 实施准入条件
+
+MVP-4 进入代码实现前，必须完成以下准入条件：
+
+- 确认所选 `YAMNet TFLite` 模型产物具有官方可追溯来源。
+- 记录模型文件名、来源 URL、文件 hash 或等价不可变标识。
+- 确认 Android 侧采用 TensorFlow Lite 作为唯一主 runtime。
+- 确认模型文件、runtime 增量与相关附属文件的包体预算口径。
+- 确认上游 license / terms 与必要 notice 处理口径。
+- 确认 Android 开发环境下的加载方式：测试资源或开发包可访问。
+
+若任一项无法确认，MVP-4 不进入后续实现里程碑。
+
+### 5.3 验证目标
 
 YAMNet TFLite 验证目标：
 
@@ -143,8 +155,9 @@ YAMNet TFLite 验证目标：
 - 可获得 embedding。
 - 可记录模型名称、模型版本和 schema 版本。
 - 可记录推理耗时和失败原因。
+- 可返回非空 embedding tensor 或明确的模型不支持失败原因。
 
-### 5.3 模型输入
+### 5.4 模型输入
 
 MVP-4 需要通过 `AudioModelInputGenerator` 生成模型所需音频输入。
 
@@ -153,16 +166,26 @@ MVP-4 需要通过 `AudioModelInputGenerator` 生成模型所需音频输入。
 - MVP-3 已验证的本地音频读取能力。
 - 测试资源或开发包中的音频样本。
 
-MVP-4 不在文档中锁死具体采样率、窗口长度和张量形态，具体参数以模型要求为准，但实现必须记录输入策略和模型版本。
+MVP-4 不在文档中锁死具体采样率、窗口长度和张量形态，具体参数以模型要求为准，但实现必须记录输入策略、输出 tensor shape 和模型版本。
 
-### 5.4 模型资源策略
+### 5.5 模型资源策略
 
-MVP-4 使用测试资源或开发包完成验证。
+MVP-4 使用测试资源或开发包完成验证，不在本阶段决定正式包体策略。
 
 - 不承诺模型进入正式包体。
 - 不决定模型内置或动态下载上线方案。
-- 模型体积目标不超过 20MB。
+- 模型文件与 runtime 增量默认目标不超过 20MB；如超过该目标，必须在文档中记录偏差与原因。
 - 若模型文件或 runtime 增量超出预期，应记录为后续包体决策风险。
+
+### 5.6 失败停止条件
+
+以下任一条件成立时，MVP-4 必须停止进入后续实现，并先更新本文档和 ADR：
+
+- 模型来源不可追溯。
+- license 或 redistribution 口径无法确认。
+- Android 端无法稳定加载模型。
+- 无法完成最小单次推理验证。
+- 关键依赖超出 MVP-4 预设边界，导致主路径不再是单纯的 TFLite 验证方案。
 
 ## 6. VGGish 备选评估
 
@@ -189,6 +212,8 @@ MVP-4 对外只暴露：
 - feature schema 版本。
 - generatedAt。
 
+`LocalFeature` 对外字段边界以 `decisions/2026-05-15-mvp4-local-feature-contract-policy.md` 为准。
+
 ### 7.2 不对外暴露内容
 
 - YAMNet top-K 分类不作为业务 mood / genre 输出。
@@ -209,6 +234,16 @@ MVP-4 对外只暴露：
 - 失败或跳过原因。
 
 embedding 序列化格式必须可测试、可反序列化、可版本化。
+
+内部诊断字段至少包括：
+
+- `costMs`
+- top-K internal diagnostics
+- 输入策略
+- 输出 tensor shape
+- 失败原因
+
+上述字段不属于 ResultProvider 对外消费的 `LocalFeature` 字段。
 
 `costMs` 仅作为内部存储、诊断和性能评估字段，不属于 ResultProvider 对外消费的 `LocalFeature` 字段。
 
@@ -234,6 +269,7 @@ MVP-4 本地特征生成由 FeaturePipeline 或调度任务异步触发，不在
 
 - `FeaturePipeline` 负责决定歌曲当前是否进入本地特征阶段、写入阶段状态和消费模型输出。
 - `LocalFeatureScheduler` 负责从可处理队列中按批次取任务，并根据设备条件、业务开关、重试次数决定立即执行、暂停、跳过或失败。
+- `LocalEmbeddingModel` 负责模型加载与推理，不直接决定业务 lifecycle state。
 
 状态写入规则：
 
@@ -270,6 +306,7 @@ MVP-4 不改变 MVP-1/2/3 的 ResultProvider 对外语义。
 - `LOCAL_FEATURE_EXTRACTING` 不应被调用方当作可用本地特征。
 - 成功生成 embedding 后，调用方可查询 `LOCAL_FEATURE_READY`。
 - `LOCAL_FEATURE_READY` 表示本地特征兜底可用，不表示云端可靠关联。
+- `LOCAL_FEATURE_READY` 不等于 `RELIABLY_ASSOCIATED`。
 - `association` 仍为空或保持原有候选语义，不写入可靠云端关联。
 - 模型关闭时，调用方仍可查询原有 `UNASSOCIATED` 或 `CANDIDATE_ASSOCIATED` 状态。
 - 模型失败时，调用方可读取 last reason。
@@ -373,8 +410,7 @@ MVP-4 完成必须满足：
 - ResultProvider 可查询 `LOCAL_FEATURE_READY`，且不会将其误认为云端可靠关联。
 - YAMNet top-K 不作为业务 mood / genre 对外暴露。
 - 模型包体、runtime 增量、性能、license 和下发策略形成后续决策输入。
-- 构建验证通过：`./gradlew :core:assemble :demo:assembleDebug`。
-- 若已引入单元测试任务，对应单元测试通过。
+- 构建与单元测试验证通过：`./gradlew :core:test :core:assemble :demo:assembleDebug`。
 
 ## 15. 后续交接
 
@@ -388,3 +424,99 @@ MVP-4 完成后需要向后续阶段交接：
 - 是否适合内置模型，或需要动态下载。
 - 是否需要合规补充提示或用户开关调整。
 - 本地 embedding 是否足以支持后续搜索推荐兜底实验。
+
+## 16. 执行拆分（5 个里程碑）
+
+在不改变 MVP-4 完整功能范围的前提下，执行按以下 5 个里程碑推进。每个里程碑都要求“实现 + 测试”闭环后再进入下一步，避免模型可行性、契约、推理、调度和 demo 混在同一次交付中导致验收口径漂移。
+
+进度标记：
+
+- [ ] 里程碑 1：文档、ADR 与准入门槛
+- [ ] 里程碑 2：本地特征契约、队列与存储基线
+- [ ] 里程碑 3：模型输入生成与 YAMNet 推理接入
+- [ ] 里程碑 4：Scheduler 与 Pipeline 本地特征阶段
+- [ ] 里程碑 5：ResultProvider、Demo 与最终验收
+
+### 16.1 里程碑 1：文档、ADR 与准入门槛
+
+产出：
+
+- `decisions/2026-05-15-mvp4-yamnet-android-tflite-policy.md`
+- `decisions/2026-05-15-mvp4-local-feature-contract-policy.md`
+- Section 5 的准入条件、失败停止条件、ADR 引用。
+- `dev-plan-v0.1.md` 中 `7.7 执行拆分` 引用。
+
+完成标准：
+
+- 文档中不再出现“实现前先确认”类悬空表述。
+- 可直接从文档确认模型来源、license、runtime、包体、加载方式、go/no-go 规则。
+- 实现者不需要再补 `YAMNet` 主路径和 `VGGish` failover 的决策。
+
+### 16.2 里程碑 2：本地特征契约、队列与存储基线
+
+产出：
+
+- `LocalFeature` 对外字段约束。
+- 本地特征内部诊断摘要边界。
+- `LocalFeatureQueue`。
+- `LocalFeatureToggle`。
+- repository/store 的本地特征读写扩展。
+- `OUTDATED` 版本触发规则。
+- 对应单元测试：队列状态、开关关闭不入队、schema/version 变更。
+
+完成标准：
+
+- `UNASSOCIATED`、`CANDIDATE_ASSOCIATED`、`RELIABLY_ASSOCIATED` 的入队边界明确。
+- `LOCAL_FEATURE_READY` 与可靠关联语义分离明确。
+- 存储和状态契约已足以支持后续模型接入，不需要实现者二次发明数据结构。
+- 单元测试要求已覆盖队列、开关、版本变化触发 `OUTDATED`。
+
+### 16.3 里程碑 3：模型输入生成与 YAMNet 推理接入
+
+产出：
+
+- `AudioModelInputGenerator`
+- 输入策略记录字段。
+- `LocalEmbeddingModel`。
+- embedding 输出、模型版本、schema version、diagnostic top-K 边界。
+- 对应单元测试：输入生成、推理成功、模型缺失、加载失败、推理失败。
+
+完成标准：
+
+- 文档足以指导实现“单首歌曲 -> embedding”最小闭环。
+- top-K 被明确限制为 internal diagnostics，不进入业务结果。
+- 推理失败路径、模型缺失路径、加载失败路径都有明确验收口径。
+- 单元测试要求能够直接映射到模型输入/推理代码。
+
+### 16.4 里程碑 4：Scheduler 与 Pipeline 本地特征阶段
+
+产出：
+
+- `LocalFeatureScheduler`。
+- `FeaturePipeline` 本地特征阶段状态流。
+- retry / skip / waiting 规则。
+- 端到端集成测试：`UNASSOCIATED -> LOCAL_FEATURE_READY`、候选默认不入队、设备保护条件。
+
+完成标准：
+
+- 本地特征阶段能被接入现有漏斗而不改变既有云端语义。
+- `LOCAL_FEATURE_EXTRACTING -> LOCAL_FEATURE_READY / WAITING_TO_CONTINUE / SKIPPED / FAILED` 流转明确。
+- 设备保护条件、开关关闭、模型资源不可用的分支都已有清晰测试口径。
+- 集成测试要求足以验证 scheduler 与 pipeline 的协同行为。
+
+### 16.5 里程碑 5：ResultProvider、Demo 与最终验收
+
+产出：
+
+- `ResultProvider` 暴露 `localFeature`。
+- Demo MVP-4 闭环。
+- Demo 展示项：开关、队列、单首/批量触发、模型信息、embedding 维度、diagnostic `costMs`、top-K internal diagnostics、失败/缺失场景。
+- 最终验收记录。
+- 构建与测试通过记录。
+
+完成标准：
+
+- demo 可复现文档关键场景。
+- `LOCAL_FEATURE_READY` 不会被误判为 `RELIABLY_ASSOCIATED`。
+- 最终验证命令统一为 `./gradlew :core:test :core:assemble :demo:assembleDebug`。
+- 文档中的验收项都能映射到 demo 证据或自动化测试结果。

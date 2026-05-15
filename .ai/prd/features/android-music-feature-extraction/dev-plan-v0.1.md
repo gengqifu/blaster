@@ -310,6 +310,13 @@
 - 模型包体、性能、隐私和下发策略形成后续决策输入。
 - 构建验证通过：`./gradlew :core:assemble :demo:assembleDebug`。
 
+### 7.7 执行拆分
+
+- MVP-4 执行按 5 个里程碑推进（文档/ADR/准入门槛 -> 本地特征契约/队列/存储 -> 模型输入/推理 -> Scheduler/Pipeline -> Demo/验收）。
+- MVP-4 以完整本地 embedding 兜底闭环为目标，但执行顺序必须先收口 YAMNet/TFLite 准入条件与本地特征契约。
+- YAMNet 主路径、license/runtime/包体准入规则和本地特征契约已固化到 MVP-4 详细计划与 ADR，后续实现按里程碑逐步闭环。
+- 详细拆分与每步完成标准见：`mvp-plans/mvp-4-local-embedding-validation.md` 第 16 章“执行拆分（5 个里程碑）”。
+
 ## 8. 调用方验收标准
 
 ### 8.1 搜索侧
