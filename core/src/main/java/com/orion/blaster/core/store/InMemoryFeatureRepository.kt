@@ -32,7 +32,11 @@ class InMemoryFeatureRepository : FeatureRepository {
     override fun getBasicInfo(localSongId: String): BasicSongInfo? = basicInfos[localSongId]
 
     override fun saveContentSignature(localSongId: String, contentSignature: String?) {
-        contentSignatures[localSongId] = contentSignature
+        if (contentSignature == null) {
+            contentSignatures.remove(localSongId)
+        } else {
+            contentSignatures[localSongId] = contentSignature
+        }
     }
 
     override fun getContentSignature(localSongId: String): String? = contentSignatures[localSongId]
