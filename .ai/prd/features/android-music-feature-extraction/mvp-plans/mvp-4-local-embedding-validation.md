@@ -684,3 +684,28 @@ MVP-4 完成后需要向后续阶段交接：
   - `ResultProvider` 语义验证通过：`LOCAL_FEATURE_READY != RELIABLY_ASSOCIATED`
 - 里程碑结论：
   - 里程碑 5 完成，MVP-4 五个里程碑全部完成。
+
+## 17. 主代码去占位与真实化整改（MVP-4+Demo）
+
+进度标记：
+
+- [x] Step 1：建立主代码禁 Mock 红线
+- [ ] Step 2：真实接入 MediaStore 扫描
+- [ ] Step 3：移除主流程中的测试扫描器与硬编码 demo 歌曲
+- [ ] Step 4：移除假音频输入分支，统一真实解码
+- [ ] Step 5：主代码替换 MockCloud 网关（不接后端，返回明确失败语义）
+- [ ] Step 6：收口验收与防回归
+
+### 17.1 Step 1：建立主代码禁 Mock 红线
+
+验收记录：
+
+- 新增主代码校验任务：`./gradlew checkMainNoMock`
+- 校验范围：`core/src/main`、`demo/src/main`
+- 禁止 token：
+  - `MockCloudMatchGateway`
+  - `TestLocalSongScanner`
+  - `content://demo/`
+  - `DemoAudio`
+  - `not wired`
+- README 已补充“主代码约束（强制）”与执行命令。
