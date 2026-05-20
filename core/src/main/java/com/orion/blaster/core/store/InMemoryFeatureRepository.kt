@@ -3,6 +3,8 @@ package com.orion.blaster.core.store
 import com.orion.blaster.core.model.BasicSongInfo
 import com.orion.blaster.core.model.AudioIdentitySummary
 import com.orion.blaster.core.model.LifecycleState
+import com.orion.blaster.core.model.LocalFeature
+import com.orion.blaster.core.model.LocalFeatureDiagnostics
 import com.orion.blaster.core.model.LocalSong
 import com.orion.blaster.core.model.LocalSongResult
 import com.orion.blaster.core.model.MatchResponse
@@ -14,6 +16,7 @@ class InMemoryFeatureRepository : FeatureRepository {
     private val basicInfos = ConcurrentHashMap<String, BasicSongInfo>()
     private val contentSignatures = ConcurrentHashMap<String, String?>()
     private val audioIdentitySummaries = ConcurrentHashMap<String, AudioIdentitySummary>()
+    private val localFeatureDiagnostics = ConcurrentHashMap<String, LocalFeatureDiagnostics>()
     private val states = ConcurrentHashMap<String, StoredState>()
 
     override fun saveLocalSong(localSong: LocalSong) {
@@ -42,6 +45,78 @@ class InMemoryFeatureRepository : FeatureRepository {
         return audioIdentitySummaries[localSongId]
     }
 
+    override fun saveLocalFeature(localSongId: String, localFeature: LocalFeature, updatedAtMs: Long) {
+        val previous = states[localSongId]
+        val association = previous?.result?.association
+        val candidates = previous?.result?.candidates.orEmpty()
+        val retryCount = previous?.retryCount ?: 0
+        val lifecycleState = if (previous?.result?.lifecycleState == LifecycleState.RELIABLY_ASSOCIATED) {
+            LifecycleState.RELIABLY_ASSOCIATED
+        } else {
+            LifecycleState.LOCAL_FEATURE_READY
+        }
+
+        states[localSongId] = StoredState(
+            result = LocalSongResult(
+                localSongId = localSongId,
+                lifecycleState = lifecycleState,
+                association = association,
+                candidates = candidates,
+                localFeature = localFeature,
+                lastReason = previous?.lastReason,
+                updatedAtMs = updatedAtMs,
+            ),
+            retryCount = retryCount,
+            lastReason = previous?.lastReason,
+            updatedAtMs = updatedAtMs,
+        )
+    }
+
+    override fun getLocalFeature(localSongId: String): LocalFeature? = states[localSongId]?.result?.localFeature
+
+    override fun saveLocalFeatureDiagnostics(localSongId: String, diagnostics: LocalFeatureDiagnostics) {
+        localFeatureDiagnostics[localSongId] = diagnostics
+    }
+
+    override fun getLocalFeatureDiagnostics(localSongId: String): LocalFeatureDiagnostics? {
+        return localFeatureDiagnostics[localSongId]
+    }
+
+    override fun markLocalFeatureOutdatedIfVersionChanged(
+        localSongId: String,
+        currentModelVersion: String,
+        currentFeatureSchemaVersion: Int,
+        updatedAtMs: Long,
+        lastReason: String?,
+    ): Boolean {
+        val existingFeature = getLocalFeature(localSongId) ?: return false
+        val changed = existingFeature.modelVersion != currentModelVersion ||
+            existingFeature.featureSchemaVersion != currentFeatureSchemaVersion
+        if (!changed) {
+            return false
+        }
+
+        val previous = states[localSongId]
+        val association = previous?.result?.association
+        val candidates = previous?.result?.candidates.orEmpty()
+        val retryCount = previous?.retryCount ?: 0
+        states[localSongId] = StoredState(
+            result = LocalSongResult(
+                localSongId = localSongId,
+                lifecycleState = LifecycleState.OUTDATED,
+                association = association,
+                candidates = candidates,
+                localFeature = null,
+                lastReason = lastReason,
+                updatedAtMs = updatedAtMs,
+            ),
+            retryCount = retryCount,
+            lastReason = lastReason,
+            updatedAtMs = updatedAtMs,
+        )
+        return true
+    }
+
     override fun saveMatchResult(
         localSongId: String,
         matchResponse: MatchResponse,
@@ -67,7 +142,7 @@ class InMemoryFeatureRepository : FeatureRepository {
                 lifecycleState = lifecycleState,
                 association = matchResponse.association,
                 candidates = matchResponse.candidates,
-                localFeature = null,
+                localFeature = previous?.result?.localFeature,
                 lastReason = lastReason,
                 updatedAtMs = updatedAtMs,
             ),
@@ -94,7 +169,7 @@ class InMemoryFeatureRepository : FeatureRepository {
                 lifecycleState = lifecycleState,
                 association = association,
                 candidates = candidates,
-                localFeature = null,
+                localFeature = previous?.result?.localFeature,
                 lastReason = lastReason,
                 updatedAtMs = updatedAtMs,
             ),
@@ -149,7 +224,7 @@ class InMemoryFeatureRepository : FeatureRepository {
                 lifecycleState = lifecycleState,
                 association = association,
                 candidates = candidates,
-                localFeature = null,
+                localFeature = previous?.result?.localFeature,
                 lastReason = lastReason,
                 updatedAtMs = updatedAtMs,
             ),

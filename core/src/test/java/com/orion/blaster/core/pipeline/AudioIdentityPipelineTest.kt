@@ -9,6 +9,8 @@ import com.orion.blaster.core.mock.MockCloudMatchGateway
 import com.orion.blaster.core.model.AudioIdentitySummary
 import com.orion.blaster.core.model.BasicSongInfo
 import com.orion.blaster.core.model.LifecycleState
+import com.orion.blaster.core.model.LocalFeature
+import com.orion.blaster.core.model.LocalFeatureDiagnostics
 import com.orion.blaster.core.model.LocalSong
 import com.orion.blaster.core.model.MatchResponse
 import com.orion.blaster.core.model.MatchResult
@@ -225,6 +227,29 @@ class AudioIdentityPipelineTest {
             delegate.saveAudioIdentitySummary(summary)
 
         override fun getAudioIdentitySummary(localSongId: String) = delegate.getAudioIdentitySummary(localSongId)
+        override fun saveLocalFeature(localSongId: String, localFeature: LocalFeature, updatedAtMs: Long) =
+            delegate.saveLocalFeature(localSongId, localFeature, updatedAtMs)
+
+        override fun getLocalFeature(localSongId: String) = delegate.getLocalFeature(localSongId)
+        override fun saveLocalFeatureDiagnostics(localSongId: String, diagnostics: LocalFeatureDiagnostics) =
+            delegate.saveLocalFeatureDiagnostics(localSongId, diagnostics)
+
+        override fun getLocalFeatureDiagnostics(localSongId: String) =
+            delegate.getLocalFeatureDiagnostics(localSongId)
+
+        override fun markLocalFeatureOutdatedIfVersionChanged(
+            localSongId: String,
+            currentModelVersion: String,
+            currentFeatureSchemaVersion: Int,
+            updatedAtMs: Long,
+            lastReason: String?,
+        ) = delegate.markLocalFeatureOutdatedIfVersionChanged(
+            localSongId = localSongId,
+            currentModelVersion = currentModelVersion,
+            currentFeatureSchemaVersion = currentFeatureSchemaVersion,
+            updatedAtMs = updatedAtMs,
+            lastReason = lastReason,
+        )
 
         override fun saveMatchResult(
             localSongId: String,

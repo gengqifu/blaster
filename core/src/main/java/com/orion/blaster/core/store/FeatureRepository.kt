@@ -3,6 +3,8 @@ package com.orion.blaster.core.store
 import com.orion.blaster.core.model.BasicSongInfo
 import com.orion.blaster.core.model.AudioIdentitySummary
 import com.orion.blaster.core.model.LifecycleState
+import com.orion.blaster.core.model.LocalFeature
+import com.orion.blaster.core.model.LocalFeatureDiagnostics
 import com.orion.blaster.core.model.LocalSong
 import com.orion.blaster.core.model.LocalSongResult
 import com.orion.blaster.core.model.MatchResponse
@@ -24,6 +26,22 @@ interface FeatureRepository {
     fun saveAudioIdentitySummary(summary: AudioIdentitySummary)
 
     fun getAudioIdentitySummary(localSongId: String): AudioIdentitySummary?
+
+    fun saveLocalFeature(localSongId: String, localFeature: LocalFeature, updatedAtMs: Long)
+
+    fun getLocalFeature(localSongId: String): LocalFeature?
+
+    fun saveLocalFeatureDiagnostics(localSongId: String, diagnostics: LocalFeatureDiagnostics)
+
+    fun getLocalFeatureDiagnostics(localSongId: String): LocalFeatureDiagnostics?
+
+    fun markLocalFeatureOutdatedIfVersionChanged(
+        localSongId: String,
+        currentModelVersion: String,
+        currentFeatureSchemaVersion: Int,
+        updatedAtMs: Long,
+        lastReason: String?,
+    ): Boolean
 
     fun saveMatchResult(
         localSongId: String,

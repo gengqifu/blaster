@@ -97,6 +97,25 @@ data class LocalFeature(
     val embedding: FloatArray,
     val modelName: String,
     val modelVersion: String,
+    val featureSchemaVersion: Int,
+    val generatedAtMs: Long,
+)
+
+data class LocalFeatureTopClass(
+    val label: String,
+    val score: Float,
+)
+
+data class LocalFeatureDiagnostics(
+    val localSongId: String,
+    val modelName: String,
+    val modelVersion: String,
+    val featureSchemaVersion: Int,
+    val inputStrategy: String,
+    val outputTensorShape: List<Int>,
+    val costMs: Long?,
+    val topClasses: List<LocalFeatureTopClass> = emptyList(),
+    val failureReason: String?,
     val generatedAtMs: Long,
 )
 

@@ -5,10 +5,15 @@ import com.orion.blaster.core.model.AudioIdentitySummary
 import com.orion.blaster.core.model.CloudAssociation
 import com.orion.blaster.core.model.CloudCandidate
 import com.orion.blaster.core.model.LifecycleState
+import com.orion.blaster.core.model.LocalFeature
+import com.orion.blaster.core.model.LocalFeatureDiagnostics
+import com.orion.blaster.core.model.LocalFeatureTopClass
 import com.orion.blaster.core.model.MatchResponse
 import com.orion.blaster.core.model.MatchResult
 import com.orion.blaster.core.model.SourceState
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -240,6 +245,80 @@ class InMemoryFeatureRepositoryTest {
     }
 
     @Test
+    fun save_and_get_local_feature_and_diagnostics() {
+        seedUnassociated("song-feature")
+        val feature = LocalFeature(
+            embedding = floatArrayOf(0.1f, 0.2f, 0.3f),
+            modelName = "YAMNet",
+            modelVersion = "tfhub-lite-1",
+            featureSchemaVersion = 1,
+            generatedAtMs = 100L,
+        )
+        val diagnostics = LocalFeatureDiagnostics(
+            localSongId = "song-feature",
+            modelName = "YAMNet",
+            modelVersion = "tfhub-lite-1",
+            featureSchemaVersion = 1,
+            inputStrategy = "mono-16k-0.975s",
+            outputTensorShape = listOf(1, 1024),
+            costMs = 45L,
+            topClasses = listOf(LocalFeatureTopClass("Music", 0.93f)),
+            failureReason = null,
+            generatedAtMs = 100L,
+        )
+
+        repository.saveLocalFeature("song-feature", feature, updatedAtMs = 101L)
+        repository.saveLocalFeatureDiagnostics("song-feature", diagnostics)
+
+        val storedFeature = repository.getLocalFeature("song-feature")
+        assertNotNull(storedFeature)
+        assertArrayEquals(feature.embedding, storedFeature?.embedding ?: floatArrayOf(), 0.0001f)
+        assertEquals(feature.modelName, storedFeature?.modelName)
+        assertEquals(feature.modelVersion, storedFeature?.modelVersion)
+        assertEquals(feature.featureSchemaVersion, storedFeature?.featureSchemaVersion)
+        assertEquals(LifecycleState.LOCAL_FEATURE_READY, repository.getResult("song-feature")?.lifecycleState)
+        assertEquals(diagnostics, repository.getLocalFeatureDiagnostics("song-feature"))
+    }
+
+    @Test
+    fun mark_local_feature_outdated_when_model_or_schema_changes() {
+        seedUnassociated("song-feature-version")
+        repository.saveLocalFeature(
+            localSongId = "song-feature-version",
+            localFeature = LocalFeature(
+                embedding = floatArrayOf(0.1f, 0.2f),
+                modelName = "YAMNet",
+                modelVersion = "v1",
+                featureSchemaVersion = 1,
+                generatedAtMs = 1L,
+            ),
+            updatedAtMs = 2L,
+        )
+
+        val unchanged = repository.markLocalFeatureOutdatedIfVersionChanged(
+            localSongId = "song-feature-version",
+            currentModelVersion = "v1",
+            currentFeatureSchemaVersion = 1,
+            updatedAtMs = 3L,
+            lastReason = "unchanged",
+        )
+        assertFalse(unchanged)
+        assertEquals(LifecycleState.LOCAL_FEATURE_READY, repository.getResult("song-feature-version")?.lifecycleState)
+
+        val changed = repository.markLocalFeatureOutdatedIfVersionChanged(
+            localSongId = "song-feature-version",
+            currentModelVersion = "v2",
+            currentFeatureSchemaVersion = 1,
+            updatedAtMs = 4L,
+            lastReason = "model_version_changed",
+        )
+        assertTrue(changed)
+        assertEquals(LifecycleState.OUTDATED, repository.getResult("song-feature-version")?.lifecycleState)
+        assertNull(repository.getLocalFeature("song-feature-version"))
+        assertEquals("model_version_changed", repository.getLastReason("song-feature-version"))
+    }
+
+    @Test
     fun get_all_local_song_ids_returns_stable_set() {
         repository.saveLocalSong(
             com.orion.blaster.core.model.LocalSong(
@@ -297,6 +376,36 @@ class InMemoryFeatureRepositoryTest {
         return MatchResponse(
             result = MatchResult.NONE,
             association = null,
+        )
+    }
+
+    private fun seedUnassociated(localSongId: String) {
+        repository.saveLocalSong(
+            com.orion.blaster.core.model.LocalSong(
+                localSongId = localSongId,
+                title = "title",
+                artist = "artist",
+                album = null,
+                durationMs = 1000L,
+                sourceState = SourceState.AVAILABLE,
+            ),
+        )
+        repository.saveBasicInfo(
+            com.orion.blaster.core.model.BasicSongInfo(
+                localSongId = localSongId,
+                title = "title",
+                artist = "artist",
+                album = null,
+                durationMs = 1000L,
+            ),
+        )
+        repository.saveMatchResult(
+            localSongId = localSongId,
+            matchResponse = noneResponse(),
+            lifecycleState = LifecycleState.UNASSOCIATED,
+            retryCount = 0,
+            lastReason = null,
+            updatedAtMs = 1L,
         )
     }
 }

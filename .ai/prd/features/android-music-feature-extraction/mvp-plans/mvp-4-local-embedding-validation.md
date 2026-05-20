@@ -488,7 +488,7 @@ MVP-4 完成后需要向后续阶段交接：
 进度标记：
 
 - [x] 里程碑 1：文档、ADR 与最小真实工程验证
-- [ ] 里程碑 2：本地特征契约、队列与存储基线
+- [x] 里程碑 2：本地特征契约、队列与存储基线
 - [ ] 里程碑 3：模型输入生成与 YAMNet 推理接入
 - [ ] 里程碑 4：Scheduler 与 Pipeline 本地特征阶段
 - [ ] 里程碑 5：ResultProvider、Demo 与最终验收
@@ -549,6 +549,29 @@ MVP-4 完成后需要向后续阶段交接：
 - `LOCAL_FEATURE_READY` 与可靠关联语义分离明确。
 - 存储和状态契约已足以支持后续模型接入，不需要实现者二次发明数据结构。
 - 单元测试要求已覆盖队列、开关、版本变化触发 `OUTDATED`。
+
+验收记录：
+
+- 代码产物：
+  - `core/src/main/java/com/orion/blaster/core/model/MatchModels.kt`
+    - `LocalFeature` 新增 `featureSchemaVersion`
+    - 新增 `LocalFeatureDiagnostics` 与 `LocalFeatureTopClass`
+  - `core/src/main/java/com/orion/blaster/core/featuretoggle/LocalFeatureToggle.kt`
+  - `core/src/main/java/com/orion/blaster/core/featurequeue/LocalFeatureQueue.kt`
+  - `core/src/main/java/com/orion/blaster/core/store/FeatureRepository.kt`
+  - `core/src/main/java/com/orion/blaster/core/store/InMemoryFeatureRepository.kt`
+- 存储能力完成项：
+  - 已支持 `save/get LocalFeature`
+  - 已支持 `save/get LocalFeatureDiagnostics`
+  - 已支持 `markLocalFeatureOutdatedIfVersionChanged`（基于 modelVersion/schemaVersion）
+- 测试产物：
+  - `core/src/test/java/com/orion/blaster/core/featurequeue/LocalFeatureQueueTest.kt`
+  - `core/src/test/java/com/orion/blaster/core/store/InMemoryFeatureRepositoryTest.kt`（新增本地特征存储与版本失效测试）
+  - `core/src/test/java/com/orion/blaster/core/pipeline/AudioIdentityPipelineTest.kt`（同步仓储接口扩展）
+- 测试结果：
+  - `./gradlew :core:testDebugUnitTest --tests '*LocalFeatureQueueTest' --tests '*InMemoryFeatureRepositoryTest' --tests '*AudioIdentityPipelineTest' --no-daemon` 通过
+- 里程碑结论：
+  - 里程碑 2 完成，允许进入里程碑 3
 
 ### 16.3 里程碑 3：模型输入生成与 YAMNet 推理接入
 
