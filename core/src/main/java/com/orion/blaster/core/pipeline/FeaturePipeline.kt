@@ -2,10 +2,15 @@ package com.orion.blaster.core.pipeline
 
 import com.orion.blaster.core.audioidentity.AudioIdentifyInputGenerator
 import com.orion.blaster.core.audioidentity.AudioIdentifyInputResult
+import com.orion.blaster.core.embedding.LocalEmbeddingGenerationResult
+import com.orion.blaster.core.embedding.LocalEmbeddingModel
 import com.orion.blaster.core.gateway.BasicInfoMatchRequest
 import com.orion.blaster.core.gateway.CloudMatchGateway
 import com.orion.blaster.core.metadata.BasicInfoExtractionInput
 import com.orion.blaster.core.metadata.BasicInfoExtractor
+import com.orion.blaster.core.modelinput.AudioModelInputGenerator
+import com.orion.blaster.core.modelinput.AudioModelInputRequest
+import com.orion.blaster.core.modelinput.AudioModelInputResult
 import com.orion.blaster.core.model.BasicSongInfo
 import com.orion.blaster.core.model.BasicInfoSource
 import com.orion.blaster.core.model.LifecycleState
@@ -15,6 +20,7 @@ import com.orion.blaster.core.model.SourceState
 import com.orion.blaster.core.model.toLifecycleState
 import com.orion.blaster.core.scanner.LocalSongScanner
 import com.orion.blaster.core.scheduler.AudioIdentityScheduler
+import com.orion.blaster.core.scheduler.LocalFeatureScheduler
 import com.orion.blaster.core.store.FeatureRepository
 
 class FeaturePipeline(
@@ -24,6 +30,8 @@ class FeaturePipeline(
     private val testResourceScanner: LocalSongScanner? = null,
     private val basicInfoExtractor: BasicInfoExtractor = BasicInfoExtractor(),
     private val audioIdentifyInputGenerator: AudioIdentifyInputGenerator? = null,
+    private val audioModelInputGenerator: AudioModelInputGenerator? = null,
+    private val localEmbeddingModel: LocalEmbeddingModel? = null,
     private val maxRetryCount: Int = 2,
     private val clock: () -> Long = { System.currentTimeMillis() },
 ) {
@@ -217,6 +225,58 @@ class FeaturePipeline(
         )
     }
 
+    fun processLocalFeatureQueue(
+        scheduler: LocalFeatureScheduler,
+        maxBatchSize: Int = Int.MAX_VALUE,
+    ): LocalFeatureProcessSummary {
+        val schedule = scheduler.schedule(maxBatchSize)
+        if (schedule.waitingReason != null) {
+            schedule.waitingItems.forEach { item ->
+                repository.saveLifecycleState(
+                    localSongId = item.localSongId,
+                    lifecycleState = LifecycleState.WAITING_TO_CONTINUE,
+                    retryCount = repository.getRetryCount(item.localSongId),
+                    lastReason = schedule.waitingReason,
+                    updatedAtMs = clock(),
+                )
+            }
+            return LocalFeatureProcessSummary(
+                scheduledCount = 0,
+                waitingCount = schedule.waitingItems.size,
+                readyCount = 0,
+                failedCount = 0,
+                skippedCount = 0,
+            )
+        }
+
+        val inputGenerator = audioModelInputGenerator
+            ?: throw IllegalStateException("AudioModelInputGenerator is not configured")
+        val embeddingModel = localEmbeddingModel
+            ?: throw IllegalStateException("LocalEmbeddingModel is not configured")
+
+        var readyCount = 0
+        var failedCount = 0
+        var skippedCount = 0
+
+        schedule.runnableItems.forEach { item ->
+            val state = processLocalFeatureItem(item, inputGenerator, embeddingModel)
+            when (state) {
+                LifecycleState.LOCAL_FEATURE_READY -> readyCount += 1
+                LifecycleState.FAILED -> failedCount += 1
+                LifecycleState.SKIPPED -> skippedCount += 1
+                else -> Unit
+            }
+        }
+
+        return LocalFeatureProcessSummary(
+            scheduledCount = schedule.runnableItems.size,
+            waitingCount = 0,
+            readyCount = readyCount,
+            failedCount = failedCount,
+            skippedCount = skippedCount,
+        )
+    }
+
     private suspend fun processAudioIdentityItem(
         item: com.orion.blaster.core.audioqueue.AudioIdentityQueueItem,
         generator: AudioIdentifyInputGenerator,
@@ -237,6 +297,72 @@ class FeaturePipeline(
                 runAudioIdentityMatch(generated.request)
             }
         }
+    }
+
+    private fun processLocalFeatureItem(
+        item: com.orion.blaster.core.featurequeue.LocalFeatureQueueItem,
+        inputGenerator: AudioModelInputGenerator,
+        embeddingModel: LocalEmbeddingModel,
+    ): LifecycleState {
+        repository.saveLifecycleState(
+            localSongId = item.localSongId,
+            lifecycleState = LifecycleState.LOCAL_FEATURE_EXTRACTING,
+            retryCount = repository.getRetryCount(item.localSongId),
+            lastReason = null,
+            updatedAtMs = clock(),
+        )
+
+        val inputResult = inputGenerator.generate(
+            AudioModelInputRequest(
+                localSongId = item.localSongId,
+                uri = item.uri,
+                mimeType = item.mimeType,
+                durationMs = item.durationMs,
+            ),
+        )
+        if (inputResult is AudioModelInputResult.Failure) {
+            return handleLocalFeatureFailure(item.localSongId, inputResult.reason)
+        }
+        inputResult as AudioModelInputResult.Success
+
+        return when (val generated = embeddingModel.generate(item.localSongId, inputResult.input)) {
+            is LocalEmbeddingGenerationResult.Success -> {
+                repository.saveLocalFeature(item.localSongId, generated.localFeature, updatedAtMs = clock())
+                repository.saveLocalFeatureDiagnostics(item.localSongId, generated.diagnostics)
+                LifecycleState.LOCAL_FEATURE_READY
+            }
+
+            is LocalEmbeddingGenerationResult.Failure -> {
+                handleLocalFeatureFailure(item.localSongId, generated.reason)
+            }
+        }
+    }
+
+    private fun handleLocalFeatureFailure(localSongId: String, reason: String): LifecycleState {
+        val lowerReason = reason.lowercase()
+        val retryable = lowerReason.startsWith("decode_error:") ||
+            lowerReason.startsWith("model_load_failed:") ||
+            lowerReason.startsWith("inference_failed:")
+        val state = when {
+            lowerReason.startsWith("unsupported_format:") -> LifecycleState.SKIPPED
+            lowerReason.startsWith("inaccessible_uri:") -> LifecycleState.WAITING_TO_CONTINUE
+            lowerReason.startsWith("model_missing:") -> LifecycleState.WAITING_TO_CONTINUE
+            retryable -> {
+                val nextRetry = repository.getRetryCount(localSongId) + 1
+                if (nextRetry > maxRetryCount) LifecycleState.FAILED else LifecycleState.WAITING_TO_CONTINUE
+            }
+
+            else -> LifecycleState.FAILED
+        }
+        val retryCount = if (retryable) repository.getRetryCount(localSongId) + 1 else repository.getRetryCount(localSongId)
+        repository.saveLifecycleState(
+            localSongId = localSongId,
+            lifecycleState = state,
+            retryCount = retryCount,
+            lastReason = reason,
+            updatedAtMs = clock(),
+        )
+        return state
     }
 
     private fun handleAudioIdentityGenerationFailure(
@@ -417,4 +543,12 @@ data class AudioIdentityProcessSummary(
     val reliableCount: Int,
     val candidateCount: Int,
     val noneCount: Int,
+)
+
+data class LocalFeatureProcessSummary(
+    val scheduledCount: Int,
+    val waitingCount: Int,
+    val readyCount: Int,
+    val failedCount: Int,
+    val skippedCount: Int,
 )

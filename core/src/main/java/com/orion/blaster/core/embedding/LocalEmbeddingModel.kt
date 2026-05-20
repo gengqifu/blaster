@@ -30,7 +30,7 @@ sealed class LocalEmbeddingGenerationResult {
     ) : LocalEmbeddingGenerationResult()
 }
 
-class LocalEmbeddingModel(
+open class LocalEmbeddingModel(
     private val modelSource: EmbeddingModelSource,
     private val featureSchemaVersion: Int = 1,
     private val clock: () -> Long = { System.currentTimeMillis() },
@@ -41,7 +41,7 @@ class LocalEmbeddingModel(
     @Volatile
     private var engine: LocalEmbeddingInferenceEngine? = null
 
-    fun generate(localSongId: String, input: AudioModelInput): LocalEmbeddingGenerationResult {
+    open fun generate(localSongId: String, input: AudioModelInput): LocalEmbeddingGenerationResult {
         val startedAt = clock()
         val embeddingOutput = try {
             getOrCreateEngine().infer(input.values)

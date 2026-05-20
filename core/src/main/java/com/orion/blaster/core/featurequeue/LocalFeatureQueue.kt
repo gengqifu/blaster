@@ -6,6 +6,9 @@ import com.orion.blaster.core.store.FeatureRepository
 
 data class LocalFeatureQueueItem(
     val localSongId: String,
+    val uri: String?,
+    val mimeType: String?,
+    val durationMs: Long?,
     val currentLifecycleState: LifecycleState,
     val retryCount: Int,
 )
@@ -21,9 +24,13 @@ class LocalFeatureQueue(
         }
 
         return repository.getByLifecycleStates(eligibleStates(toggle))
-            .map { result ->
+            .mapNotNull { result ->
+                val song = repository.getLocalSong(result.localSongId) ?: return@mapNotNull null
                 LocalFeatureQueueItem(
                     localSongId = result.localSongId,
+                    uri = song.uri,
+                    mimeType = song.mimeType,
+                    durationMs = song.durationMs,
                     currentLifecycleState = result.lifecycleState,
                     retryCount = repository.getRetryCount(result.localSongId),
                 )

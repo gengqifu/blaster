@@ -490,7 +490,7 @@ MVP-4 完成后需要向后续阶段交接：
 - [x] 里程碑 1：文档、ADR 与最小真实工程验证
 - [x] 里程碑 2：本地特征契约、队列与存储基线
 - [x] 里程碑 3：模型输入生成与 YAMNet 推理接入
-- [ ] 里程碑 4：Scheduler 与 Pipeline 本地特征阶段
+- [x] 里程碑 4：Scheduler 与 Pipeline 本地特征阶段
 - [ ] 里程碑 5：ResultProvider、Demo 与最终验收
 
 ### 16.1 里程碑 1：文档、ADR 与最小真实工程验证
@@ -627,6 +627,29 @@ MVP-4 完成后需要向后续阶段交接：
 - `LOCAL_FEATURE_EXTRACTING -> LOCAL_FEATURE_READY / WAITING_TO_CONTINUE / SKIPPED / FAILED` 流转明确。
 - 设备保护条件、开关关闭、模型资源不可用的分支都已有清晰测试口径。
 - 集成测试要求足以验证 scheduler 与 pipeline 的协同行为。
+
+验收记录：
+
+- 代码产物：
+  - `core/src/main/java/com/orion/blaster/core/scheduler/LocalFeatureScheduler.kt`
+  - `core/src/main/java/com/orion/blaster/core/pipeline/FeaturePipeline.kt`（新增 `processLocalFeatureQueue` 与本地特征失败分支处理）
+  - `core/src/main/java/com/orion/blaster/core/featurequeue/LocalFeatureQueue.kt`（补充队列输入字段）
+- 状态流实现结果：
+  - `UNASSOCIATED/CANDIDATE_ASSOCIATED` 入队由 `LocalFeatureQueue + LocalFeatureToggle` 控制
+  - 执行中写入 `LOCAL_FEATURE_EXTRACTING`
+  - 成功写入 `LOCAL_FEATURE_READY`
+  - 失败按原因进入 `WAITING_TO_CONTINUE / SKIPPED / FAILED`
+- 分支语义：
+  - `model_missing` 与设备保护条件进入 `WAITING_TO_CONTINUE`（不计技术重试）
+  - `model_load_failed / inference_failed / decode_error` 计技术重试，超上限转 `FAILED`
+- 测试产物：
+  - `core/src/test/java/com/orion/blaster/core/scheduler/LocalFeatureSchedulerTest.kt`
+  - `core/src/test/java/com/orion/blaster/core/pipeline/LocalFeaturePipelineTest.kt`
+- 测试结果：
+  - `./gradlew :core:testDebugUnitTest --tests '*LocalFeatureSchedulerTest' --tests '*LocalFeaturePipelineTest' --tests '*AudioIdentityPipelineTest' --tests '*LocalFeatureQueueTest' --no-daemon` 通过
+  - `./gradlew :core:testDebugUnitTest --no-daemon` 通过
+- 里程碑结论：
+  - 里程碑 4 完成，允许进入里程碑 5
 
 ### 16.5 里程碑 5：ResultProvider、Demo 与最终验收
 
