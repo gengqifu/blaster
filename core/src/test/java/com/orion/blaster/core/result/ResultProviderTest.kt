@@ -3,6 +3,7 @@ package com.orion.blaster.core.result
 import com.orion.blaster.core.model.AssociationStage
 import com.orion.blaster.core.model.CloudAssociation
 import com.orion.blaster.core.model.LifecycleState
+import com.orion.blaster.core.model.LocalFeature
 import com.orion.blaster.core.model.MatchResponse
 import com.orion.blaster.core.model.MatchResult
 import com.orion.blaster.core.store.InMemoryFeatureRepository
@@ -89,5 +90,36 @@ class ResultProviderTest {
         val provider = ResultProvider(repository)
 
         assertTrue(provider.isProcessing("song-processing"))
+    }
+
+    @Test
+    fun local_feature_ready_exposes_local_feature_but_not_reliable_association() {
+        val repository = InMemoryFeatureRepository()
+        repository.saveMatchResult(
+            localSongId = "song-local-feature",
+            matchResponse = MatchResponse(result = MatchResult.NONE, association = null),
+            lifecycleState = LifecycleState.UNASSOCIATED,
+            retryCount = 0,
+            lastReason = null,
+            updatedAtMs = 1L,
+        )
+        repository.saveLocalFeature(
+            localSongId = "song-local-feature",
+            localFeature = LocalFeature(
+                embedding = floatArrayOf(0.1f, 0.2f),
+                modelName = "YAMNet",
+                modelVersion = "tfhub-lite-1",
+                featureSchemaVersion = 1,
+                generatedAtMs = 2L,
+            ),
+            updatedAtMs = 2L,
+        )
+
+        val provider = ResultProvider(repository)
+        val result = provider.getResult("song-local-feature")
+
+        assertEquals(LifecycleState.LOCAL_FEATURE_READY, result?.lifecycleState)
+        assertFalse(provider.isReliablyAssociated("song-local-feature"))
+        assertTrue(result?.localFeature?.embedding?.isNotEmpty() == true)
     }
 }

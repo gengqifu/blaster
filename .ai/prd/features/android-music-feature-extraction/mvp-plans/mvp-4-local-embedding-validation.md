@@ -491,7 +491,7 @@ MVP-4 完成后需要向后续阶段交接：
 - [x] 里程碑 2：本地特征契约、队列与存储基线
 - [x] 里程碑 3：模型输入生成与 YAMNet 推理接入
 - [x] 里程碑 4：Scheduler 与 Pipeline 本地特征阶段
-- [ ] 里程碑 5：ResultProvider、Demo 与最终验收
+- [x] 里程碑 5：ResultProvider、Demo 与最终验收
 
 ### 16.1 里程碑 1：文档、ADR 与最小真实工程验证
 
@@ -667,3 +667,20 @@ MVP-4 完成后需要向后续阶段交接：
 - `LOCAL_FEATURE_READY` 不会被误判为 `RELIABLY_ASSOCIATED`。
 - 最终验证命令统一为 `./gradlew :core:test :core:assemble :demo:assembleDebug`。
 - 文档中的验收项都能映射到 demo 证据或自动化测试结果。
+
+验收记录：
+
+- 代码产物：
+  - `core/src/test/java/com/orion/blaster/core/result/ResultProviderTest.kt`（新增 `LOCAL_FEATURE_READY` 语义测试）
+  - `demo/src/main/java/com/orion/blaster/demo/MainActivity.kt`（新增本地特征开关、候选入队开关、本地特征执行入口与结果展示）
+  - `demo/src/main/res/layout/activity_main.xml`（新增本地特征 guard/candidate spinner 与触发按钮）
+  - `demo/src/main/res/values/strings.xml`（新增 MVP-4 demo 文案）
+- demo 展示能力：
+  - 支持本地特征开关（`ALLOW/DISABLED/MODEL_MISSING/...`）
+  - 支持候选是否入队切换（`UNASSOCIATED_ONLY/INCLUDE_CANDIDATE`）
+  - 支持展示 local feature queue、embedding 维度、模型信息、`costMs`、top-K internal diagnostics、failure reason
+- 自动化验证结果：
+  - `./gradlew :core:test :core:assemble :demo:assembleDebug --no-daemon` 通过
+  - `ResultProvider` 语义验证通过：`LOCAL_FEATURE_READY != RELIABLY_ASSOCIATED`
+- 里程碑结论：
+  - 里程碑 5 完成，MVP-4 五个里程碑全部完成。
