@@ -690,7 +690,7 @@ MVP-4 完成后需要向后续阶段交接：
 进度标记：
 
 - [x] Step 1：建立主代码禁 Mock 红线
-- [ ] Step 2：真实接入 MediaStore 扫描
+- [x] Step 2：真实接入 MediaStore 扫描
 - [ ] Step 3：移除主流程中的测试扫描器与硬编码 demo 歌曲
 - [ ] Step 4：移除假音频输入分支，统一真实解码
 - [ ] Step 5：主代码替换 MockCloud 网关（不接后端，返回明确失败语义）
@@ -709,3 +709,15 @@ MVP-4 完成后需要向后续阶段交接：
   - `DemoAudio`
   - `not wired`
 - README 已补充“主代码约束（强制）”与执行命令。
+
+### 17.2 Step 2：真实接入 MediaStore 扫描
+
+验收记录：
+
+- 新增 `MediaStoreLocalSongScanner`：`core/src/main/java/com/orion/blaster/core/scanner/MediaStoreLocalSongScanner.kt`
+- `demo` 中 `ScanSource.MEDIA_STORE` 已接入真实扫描，不再走“not wired”短路
+- `demo` 已补齐读取音频权限声明与运行时申请：
+  - `READ_MEDIA_AUDIO`（Android 13+）
+  - `READ_EXTERNAL_STORAGE`（Android 12 及以下）
+- 构建验证通过：
+  - `./gradlew :core:assemble :demo:assembleDebug --no-daemon`

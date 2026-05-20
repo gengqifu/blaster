@@ -1,5 +1,8 @@
 package com.orion.blaster.demo
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import android.widget.ArrayAdapter
 import android.widget.Button
@@ -38,6 +41,7 @@ import com.orion.blaster.core.modelinput.AudioModelInputResult
 import com.orion.blaster.core.modelinput.DefaultAudioModelInputGenerator
 import com.orion.blaster.core.modelinput.PcmAudioProvider
 import com.orion.blaster.core.result.ResultProvider
+import com.orion.blaster.core.scanner.MediaStoreLocalSongScanner
 import com.orion.blaster.core.scanner.TestLocalSongScanner
 import com.orion.blaster.core.scanner.TestSongRecord
 import com.orion.blaster.core.scheduler.AudioIdentityDeviceState
@@ -51,6 +55,9 @@ import kotlinx.coroutines.launch
 import java.io.File
 
 class MainActivity : AppCompatActivity() {
+    companion object {
+        private const val READ_AUDIO_PERMISSION_REQ = 1001
+    }
     private val scenarios = listOf("RELIABLE", "CANDIDATE", "NONE", "ERROR", "TIMEOUT", "DEGRADED")
     private val sources = listOf("TEST_RESOURCES", "MEDIA_STORE")
     private val audioGuards = listOf(
@@ -84,6 +91,7 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
+        ensureAudioPermission()
 
         val sourceSpinner = findViewById<Spinner>(R.id.sourceSpinner)
         val spinner = findViewById<Spinner>(R.id.scenarioSpinner)
@@ -206,8 +214,11 @@ class MainActivity : AppCompatActivity() {
             ScanSource.MEDIA_STORE
         }
         if (source == ScanSource.MEDIA_STORE) {
-            resultView.text = "MEDIA_STORE demo scanner not wired yet. Use TEST_RESOURCES for MVP-2 acceptance."
-            return
+            if (!hasAudioPermission()) {
+                resultView.text = "Audio permission is required for MEDIA_STORE scan."
+                ensureAudioPermission()
+                return
+            }
         }
 
         val stable = stableRecords()
@@ -343,9 +354,7 @@ class MainActivity : AppCompatActivity() {
             audioModelInputGenerator = DemoAudioModelInputGenerator(),
             localEmbeddingModel = createLocalEmbeddingModel(),
             testResourceScanner = TestLocalSongScanner(stableRecords),
-            mediaStoreScanner = object : com.orion.blaster.core.scanner.LocalSongScanner {
-                override fun scan(): List<com.orion.blaster.core.scanner.ScannedLocalSong> = emptyList()
-            },
+            mediaStoreScanner = MediaStoreLocalSongScanner(this),
         ).let { pipeline ->
             if (latestRecords === changedRecords) {
                 FeaturePipeline(
@@ -355,9 +364,7 @@ class MainActivity : AppCompatActivity() {
                     audioModelInputGenerator = DemoAudioModelInputGenerator(),
                     localEmbeddingModel = createLocalEmbeddingModel(),
                     testResourceScanner = TestLocalSongScanner(changedRecords),
-                    mediaStoreScanner = object : com.orion.blaster.core.scanner.LocalSongScanner {
-                        override fun scan(): List<com.orion.blaster.core.scanner.ScannedLocalSong> = emptyList()
-                    },
+                    mediaStoreScanner = MediaStoreLocalSongScanner(this),
                 )
             } else {
                 pipeline
@@ -522,6 +529,24 @@ class MainActivity : AppCompatActivity() {
                     updatedAtMs = System.currentTimeMillis(),
                 ),
             )
+        }
+    }
+
+    private fun audioPermission(): String {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            Manifest.permission.READ_MEDIA_AUDIO
+        } else {
+            Manifest.permission.READ_EXTERNAL_STORAGE
+        }
+    }
+
+    private fun hasAudioPermission(): Boolean {
+        return checkSelfPermission(audioPermission()) == PackageManager.PERMISSION_GRANTED
+    }
+
+    private fun ensureAudioPermission() {
+        if (!hasAudioPermission()) {
+            requestPermissions(arrayOf(audioPermission()), READ_AUDIO_PERMISSION_REQ)
         }
     }
 }
