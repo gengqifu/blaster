@@ -173,6 +173,7 @@ class FeaturePipeline(
     suspend fun processAudioIdentityQueue(
         scheduler: AudioIdentityScheduler,
         forceScenario: String? = null,
+        audioCompareEnabled: Boolean = false,
         maxBatchSize: Int = Int.MAX_VALUE,
     ): AudioIdentityProcessSummary {
         val schedule = scheduler.schedule(maxBatchSize)
@@ -189,6 +190,9 @@ class FeaturePipeline(
             return AudioIdentityProcessSummary(
                 scheduledCount = 0,
                 waitingCount = schedule.waitingItems.size,
+                extractedCount = 0,
+                comparedCount = 0,
+                compareSkippedCount = 0,
                 failedCount = 0,
                 reliableCount = 0,
                 candidateCount = 0,
@@ -199,13 +203,25 @@ class FeaturePipeline(
         val generator = audioIdentifyInputGenerator
             ?: throw IllegalStateException("AudioIdentifyInputGenerator is not configured")
 
+        var extractedCount = 0
+        var comparedCount = 0
+        var compareSkippedCount = 0
         var failedCount = 0
         var reliableCount = 0
         var candidateCount = 0
         var noneCount = 0
 
         schedule.runnableItems.forEach { item ->
-            val finalState = processAudioIdentityItem(item, generator, forceScenario)
+            val output = processAudioIdentityItem(item, generator, forceScenario, audioCompareEnabled)
+            if (output.extracted) {
+                extractedCount += 1
+            }
+            if (output.compared) {
+                comparedCount += 1
+            } else if (output.extracted) {
+                compareSkippedCount += 1
+            }
+            val finalState = output.state
             when (finalState) {
                 LifecycleState.RELIABLY_ASSOCIATED -> reliableCount += 1
                 LifecycleState.CANDIDATE_ASSOCIATED -> candidateCount += 1
@@ -218,6 +234,9 @@ class FeaturePipeline(
         return AudioIdentityProcessSummary(
             scheduledCount = schedule.runnableItems.size,
             waitingCount = 0,
+            extractedCount = extractedCount,
+            comparedCount = comparedCount,
+            compareSkippedCount = compareSkippedCount,
             failedCount = failedCount,
             reliableCount = reliableCount,
             candidateCount = candidateCount,
@@ -281,7 +300,8 @@ class FeaturePipeline(
         item: com.orion.blaster.core.audioqueue.AudioIdentityQueueItem,
         generator: AudioIdentifyInputGenerator,
         forceScenario: String?,
-    ): LifecycleState {
+        audioCompareEnabled: Boolean,
+    ): AudioIdentityItemOutput {
         repository.saveLifecycleState(
             localSongId = item.localSongId,
             lifecycleState = LifecycleState.AUDIO_IDENTIFYING,
@@ -291,10 +311,39 @@ class FeaturePipeline(
         )
 
         return when (val generated = generator.generate(item, forceScenario)) {
-            is AudioIdentifyInputResult.Failure -> handleAudioIdentityGenerationFailure(item.localSongId, generated)
+            is AudioIdentifyInputResult.Failure -> AudioIdentityItemOutput(
+                state = handleAudioIdentityGenerationFailure(item.localSongId, generated),
+                extracted = false,
+                compared = false,
+            )
             is AudioIdentifyInputResult.Success -> {
                 repository.saveAudioIdentitySummary(generated.summary)
-                runAudioIdentityMatch(generated.request)
+                if (!audioCompareEnabled) {
+                    val previous = repository.getResult(item.localSongId)?.lifecycleState
+                    val fallbackState = if (previous == LifecycleState.CANDIDATE_ASSOCIATED) {
+                        LifecycleState.CANDIDATE_ASSOCIATED
+                    } else {
+                        LifecycleState.UNASSOCIATED
+                    }
+                    repository.saveLifecycleState(
+                        localSongId = item.localSongId,
+                        lifecycleState = fallbackState,
+                        retryCount = repository.getRetryCount(item.localSongId),
+                        lastReason = "audio_extracted_compare_disabled",
+                        updatedAtMs = clock(),
+                    )
+                    AudioIdentityItemOutput(
+                        state = fallbackState,
+                        extracted = true,
+                        compared = false,
+                    )
+                } else {
+                    AudioIdentityItemOutput(
+                        state = runAudioIdentityMatch(generated.request),
+                        extracted = true,
+                        compared = true,
+                    )
+                }
             }
         }
     }
@@ -539,10 +588,19 @@ data class ScanProcessSummary(
 data class AudioIdentityProcessSummary(
     val scheduledCount: Int,
     val waitingCount: Int,
+    val extractedCount: Int,
+    val comparedCount: Int,
+    val compareSkippedCount: Int,
     val failedCount: Int,
     val reliableCount: Int,
     val candidateCount: Int,
     val noneCount: Int,
+)
+
+private data class AudioIdentityItemOutput(
+    val state: LifecycleState,
+    val extracted: Boolean,
+    val compared: Boolean,
 )
 
 data class LocalFeatureProcessSummary(

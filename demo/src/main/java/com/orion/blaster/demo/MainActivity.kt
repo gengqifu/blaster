@@ -64,6 +64,7 @@ class MainActivity : AppCompatActivity() {
         "FOREGROUND_BUSY",
         "NO_PERMISSION",
     )
+    private val audioCompareToggles = listOf("OFF", "ON")
     private val localFeatureGuards = listOf(
         "ALLOW",
         "DISABLED",
@@ -92,6 +93,7 @@ class MainActivity : AppCompatActivity() {
         val spinner = findViewById<Spinner>(R.id.scenarioSpinner)
         val audioScenarioSpinner = findViewById<Spinner>(R.id.audioScenarioSpinner)
         val audioGuardSpinner = findViewById<Spinner>(R.id.audioGuardSpinner)
+        val audioCompareSpinner = findViewById<Spinner>(R.id.audioCompareSpinner)
         val localFeatureGuardSpinner = findViewById<Spinner>(R.id.localFeatureGuardSpinner)
         val localFeatureCandidateSpinner = findViewById<Spinner>(R.id.localFeatureCandidateSpinner)
         val runButton = findViewById<Button>(R.id.runButton)
@@ -105,6 +107,7 @@ class MainActivity : AppCompatActivity() {
         spinner.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, scenarios)
         audioScenarioSpinner.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, scenarios)
         audioGuardSpinner.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, audioGuards)
+        audioCompareSpinner.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, audioCompareToggles)
         localFeatureGuardSpinner.adapter =
             ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, localFeatureGuards)
         localFeatureCandidateSpinner.adapter =
@@ -121,7 +124,8 @@ class MainActivity : AppCompatActivity() {
         runAudioButton.setOnClickListener {
             val scenario = audioScenarioSpinner.selectedItem as String
             val guard = audioGuardSpinner.selectedItem as String
-            uiScope.launch { runAudioIdentity(scenario, guard, resultText) }
+            val compareEnabled = (audioCompareSpinner.selectedItem as String) == "ON"
+            uiScope.launch { runAudioIdentity(scenario, guard, compareEnabled, resultText) }
         }
         runLocalFeatureButton.setOnClickListener {
             val guard = localFeatureGuardSpinner.selectedItem as String
@@ -147,7 +151,12 @@ class MainActivity : AppCompatActivity() {
         renderResult(resultView)
     }
 
-    private suspend fun runAudioIdentity(scenario: String, guard: String, resultView: TextView) {
+    private suspend fun runAudioIdentity(
+        scenario: String,
+        guard: String,
+        compareEnabled: Boolean,
+        resultView: TextView,
+    ) {
         if (latestSummary == null) {
             resultView.text = "Run scan first."
             return
@@ -156,7 +165,11 @@ class MainActivity : AppCompatActivity() {
             queue = AudioIdentityQueue(repository),
             deviceStateProvider = { deviceStateForGuard(guard) },
         )
-        latestAudioSummary = buildPipeline().processAudioIdentityQueue(scheduler = scheduler, forceScenario = scenario)
+        latestAudioSummary = buildPipeline().processAudioIdentityQueue(
+            scheduler = scheduler,
+            forceScenario = scenario,
+            audioCompareEnabled = compareEnabled,
+        )
         renderResult(resultView)
     }
 
@@ -198,6 +211,8 @@ class MainActivity : AppCompatActivity() {
             latestAudioSummary?.let { audio ->
                 appendLine(
                     "audioIdentity: scheduled=${audio.scheduledCount}, waiting=${audio.waitingCount}, " +
+                        "audioExtracted=${audio.extractedCount}, audioCompared=${audio.comparedCount}, " +
+                        "compareSkipped=${audio.compareSkippedCount}, " +
                         "failed=${audio.failedCount}, reliable=${audio.reliableCount}, " +
                         "candidate=${audio.candidateCount}, none=${audio.noneCount}",
                 )

@@ -773,3 +773,19 @@ MVP-4 完成后需要向后续阶段交接：
   - `./gradlew :core:test :core:assemble :demo:assembleDebug --no-daemon`
 - 主代码搜索校验：
   - `rg -n "MockCloudMatchGateway|TestLocalSongScanner|content://demo/|DemoAudio|not wired" core/src/main demo/src/main -S` 无命中。
+
+### 17.7 Audio Identity 阶段语义修订（提取优先、比对可选）
+
+验收记录：
+
+- `processAudioIdentityQueue` 已拆分为：
+  - extract：始终执行 `AudioIdentifyInputGenerator` 并保存 `AudioIdentitySummary`
+  - compare：仅在 `audioCompareEnabled=true` 时调用 `CloudMatchGateway.matchByAudioIdentity`
+- compare 关闭时：
+  - 不调用云端
+  - 不写 `FAILED(service_not_configured)`
+  - 状态保持 `UNASSOCIATED`（或原 `CANDIDATE_ASSOCIATED`），并写入 `lastReason=audio_extracted_compare_disabled`
+- `AudioIdentityProcessSummary` 新增：
+  - `extractedCount`
+  - `comparedCount`
+  - `compareSkippedCount`

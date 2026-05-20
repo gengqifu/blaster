@@ -5,6 +5,7 @@ import com.orion.blaster.core.audioidentity.AudioIdentifyInputResult
 import com.orion.blaster.core.audioqueue.AudioIdentityQueue
 import com.orion.blaster.core.audioqueue.AudioIdentityQueueItem
 import com.orion.blaster.core.gateway.AudioIdentityMatchRequest
+import com.orion.blaster.core.gateway.NoopCloudMatchGateway
 import com.orion.blaster.core.mock.MockCloudMatchGateway
 import com.orion.blaster.core.model.AudioIdentitySummary
 import com.orion.blaster.core.model.BasicSongInfo
@@ -35,9 +36,13 @@ class AudioIdentityPipelineTest {
         val summary = pipeline.processAudioIdentityQueue(
             scheduler = AudioIdentityScheduler(AudioIdentityQueue(repository)),
             forceScenario = "RELIABLE",
+            audioCompareEnabled = true,
         )
 
         assertEquals(1, summary.scheduledCount)
+        assertEquals(1, summary.extractedCount)
+        assertEquals(1, summary.comparedCount)
+        assertEquals(0, summary.compareSkippedCount)
         assertEquals(1, summary.reliableCount)
         assertEquals(LifecycleState.RELIABLY_ASSOCIATED, repository.getResult("song-audio")?.lifecycleState)
         assertNotNull(repository.getAudioIdentitySummary("song-audio"))
@@ -53,6 +58,7 @@ class AudioIdentityPipelineTest {
         pipeline(candidateRepository, forceScenario = "CANDIDATE").processAudioIdentityQueue(
             scheduler = AudioIdentityScheduler(AudioIdentityQueue(candidateRepository)),
             forceScenario = "CANDIDATE",
+            audioCompareEnabled = true,
         )
 
         val noneRepository = RecordingRepository()
@@ -60,6 +66,7 @@ class AudioIdentityPipelineTest {
         pipeline(noneRepository, forceScenario = "NONE").processAudioIdentityQueue(
             scheduler = AudioIdentityScheduler(AudioIdentityQueue(noneRepository)),
             forceScenario = "NONE",
+            audioCompareEnabled = true,
         )
 
         assertEquals(LifecycleState.CANDIDATE_ASSOCIATED, candidateRepository.getResult("song-audio")?.lifecycleState)
@@ -76,6 +83,7 @@ class AudioIdentityPipelineTest {
             val summary = pipeline.processAudioIdentityQueue(
                 scheduler = AudioIdentityScheduler(AudioIdentityQueue(repository)),
                 forceScenario = scenario,
+                audioCompareEnabled = true,
             )
 
             assertEquals(1, summary.failedCount)
@@ -93,6 +101,7 @@ class AudioIdentityPipelineTest {
         pipeline.processAudioIdentityQueue(
             scheduler = AudioIdentityScheduler(AudioIdentityQueue(repository)),
             forceScenario = "DEGRADED",
+            audioCompareEnabled = true,
         )
 
         assertEquals(LifecycleState.WAITING_TO_CONTINUE, repository.getResult("song-audio")?.lifecycleState)
@@ -117,6 +126,7 @@ class AudioIdentityPipelineTest {
                 deviceStateProvider = { AudioIdentityDeviceState(lowBattery = true) },
             ),
             forceScenario = "RELIABLE",
+            audioCompareEnabled = true,
         )
 
         assertEquals(0, summary.scheduledCount)
@@ -124,6 +134,58 @@ class AudioIdentityPipelineTest {
         assertEquals(LifecycleState.WAITING_TO_CONTINUE, repository.getResult("song-audio")?.lifecycleState)
         assertEquals("low_battery", repository.getLastReason("song-audio"))
         assertEquals(0, generator.callCount)
+    }
+
+    @Test
+    fun compare_disabled_extracts_without_gateway_calling_and_without_failed() = runBlocking {
+        val repository = RecordingRepository()
+        seedPendingSong(repository, LifecycleState.UNASSOCIATED)
+        val generator = FakeGenerator(forceScenario = "RELIABLE")
+        val pipeline = FeaturePipeline(
+            gateway = NoopCloudMatchGateway(),
+            repository = repository,
+            audioIdentifyInputGenerator = generator,
+        )
+
+        val summary = pipeline.processAudioIdentityQueue(
+            scheduler = AudioIdentityScheduler(AudioIdentityQueue(repository)),
+            forceScenario = "RELIABLE",
+            audioCompareEnabled = false,
+        )
+
+        assertEquals(1, summary.scheduledCount)
+        assertEquals(1, summary.extractedCount)
+        assertEquals(0, summary.comparedCount)
+        assertEquals(1, summary.compareSkippedCount)
+        assertEquals(0, summary.failedCount)
+        assertEquals(LifecycleState.UNASSOCIATED, repository.getResult("song-audio")?.lifecycleState)
+        assertEquals("audio_extracted_compare_disabled", repository.getLastReason("song-audio"))
+        assertNotNull(repository.getAudioIdentitySummary("song-audio"))
+        assertEquals(1, generator.callCount)
+    }
+
+    @Test
+    fun compare_enabled_with_noop_gateway_records_service_not_configured() = runBlocking {
+        val repository = RecordingRepository()
+        seedPendingSong(repository, LifecycleState.UNASSOCIATED)
+        val generator = FakeGenerator()
+        val pipeline = FeaturePipeline(
+            gateway = NoopCloudMatchGateway(),
+            repository = repository,
+            audioIdentifyInputGenerator = generator,
+            maxRetryCount = 0,
+        )
+
+        val summary = pipeline.processAudioIdentityQueue(
+            scheduler = AudioIdentityScheduler(AudioIdentityQueue(repository)),
+            audioCompareEnabled = true,
+        )
+
+        assertEquals(1, summary.extractedCount)
+        assertEquals(1, summary.comparedCount)
+        assertEquals(0, summary.compareSkippedCount)
+        assertEquals(1, summary.failedCount)
+        assertEquals("service_not_configured", repository.getLastReason("song-audio"))
     }
 
     private fun pipeline(

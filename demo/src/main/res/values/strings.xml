@@ -5,6 +5,7 @@
     <string name="match_scenario">Match Scenario</string>
     <string name="audio_match_scenario">Audio Identity Scenario</string>
     <string name="audio_guard">Audio Identity Guard</string>
+    <string name="audio_compare_toggle">Audio Compare</string>
     <string name="local_feature_guard">Local Feature Guard</string>
     <string name="local_feature_candidate_scope">Candidate Queue Scope</string>
     <string name="run_pipeline">Run Scan + Match</string>

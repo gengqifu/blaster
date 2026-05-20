@@ -98,6 +98,8 @@ adb shell am start -n com.orion.blaster.demo/.MainActivity
 
 ### 3. 音频指纹阶段（MVP-3）
 
+说明：`Run Audio Identity` 默认是“提取优先、比对可选”。`Audio Compare=OFF` 时只做端上提取并保存摘要，不调用云端比对。
+
 设置：
 
 - `Audio Identity Scenario` 先选 `NONE`（可再试 `RELIABLE/CANDIDATE/ERROR`）
@@ -109,7 +111,7 @@ adb shell am start -n com.orion.blaster.demo/.MainActivity
 
 预期：
 
-- `audioIdentity:` 行出现 `scheduled/waiting/failed/reliable/candidate/none`
+- `audioIdentity:` 行出现 `scheduled/waiting/audioExtracted/audioCompared/compareSkipped/failed/reliable/candidate/none`
 - `audio identity summaries:` 出现 `algorithm/version/costMs/reason`
 
 可验证保护分支：
