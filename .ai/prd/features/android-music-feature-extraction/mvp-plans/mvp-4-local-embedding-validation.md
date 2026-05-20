@@ -694,7 +694,7 @@ MVP-4 完成后需要向后续阶段交接：
 - [x] Step 3：移除主流程中的测试扫描器与硬编码 demo 歌曲
 - [x] Step 4：移除假音频输入分支，统一真实解码
 - [x] Step 5：主代码替换 MockCloud 网关（不接后端，返回明确失败语义）
-- [ ] Step 6：收口验收与防回归
+- [x] Step 6：收口验收与防回归
 
 ### 17.1 Step 1：建立主代码禁 Mock 红线
 
@@ -757,3 +757,19 @@ MVP-4 完成后需要向后续阶段交接：
   - 不伪造 `RELIABLY_ASSOCIATED`
 - 测试产物：
   - `core/src/test/java/com/orion/blaster/core/gateway/NoopCloudMatchGatewayTest.kt`
+
+### 17.6 Step 6：收口验收与防回归
+
+验收记录：
+
+- `core/src/main` 已移除 `MockCloudMatchGateway`，并迁移到测试目录：
+  - `core/src/test/java/com/orion/blaster/core/mock/MockCloudMatchGateway.kt`
+- `TestLocalSongScanner` 已从主代码迁移到测试目录：
+  - `core/src/test/java/com/orion/blaster/core/scanner/TestLocalSongScanner.kt`
+- 主代码命名清理：`DemoAudio*` 已重命名为 `MainAudio*`，避免主代码占位语义。
+- Anti-mock 校验通过：
+  - `./gradlew checkMainNoMock --no-daemon`
+- 全量验收通过：
+  - `./gradlew :core:test :core:assemble :demo:assembleDebug --no-daemon`
+- 主代码搜索校验：
+  - `rg -n "MockCloudMatchGateway|TestLocalSongScanner|content://demo/|DemoAudio|not wired" core/src/main demo/src/main -S` 无命中。

@@ -238,8 +238,8 @@ class MainActivity : AppCompatActivity() {
         return FeaturePipeline(
             gateway = gateway,
             repository = repository,
-            audioIdentifyInputGenerator = DemoAudioIdentifyInputGenerator(),
-            audioModelInputGenerator = DemoAudioModelInputGenerator(),
+            audioIdentifyInputGenerator = MainAudioIdentifyInputGenerator(),
+            audioModelInputGenerator = MainAudioModelInputGenerator(),
             localEmbeddingModel = createLocalEmbeddingModel(),
             testResourceScanner = null,
             mediaStoreScanner = MediaStoreLocalSongScanner(this),
@@ -289,7 +289,7 @@ class MainActivity : AppCompatActivity() {
         )
     }
 
-    private inner class DemoAudioModelInputGenerator : AudioModelInputGenerator {
+    private inner class MainAudioModelInputGenerator : AudioModelInputGenerator {
         private val delegate = DefaultAudioModelInputGenerator(
             pcmAudioProvider = PcmAudioProvider { input ->
                 if (input.uri == null) {
@@ -308,7 +308,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private class DemoAudioIdentifyInputGenerator : AudioIdentifyInputGenerator {
+    private class MainAudioIdentifyInputGenerator : AudioIdentifyInputGenerator {
         override fun generate(item: AudioIdentityQueueItem, forceScenario: String?): AudioIdentifyInputResult {
             val payloadText = "audio-identity:${item.localSongId}:${item.contentSignature ?: "no-signature"}"
             val payload = payloadText.toByteArray(Charsets.UTF_8)
