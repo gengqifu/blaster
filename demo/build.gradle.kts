@@ -33,6 +33,15 @@ android {
     kotlinOptions {
         jvmTarget = "17"
     }
+
+    packaging {
+        jniLibs {
+            keepDebugSymbols += setOf(
+                "**/libblaster_chromaprint_jni.so",
+                "**/libchromaprint.so",
+            )
+        }
+    }
 }
 
 dependencies {

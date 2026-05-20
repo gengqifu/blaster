@@ -35,6 +35,9 @@ class FeaturePipeline(
     private val maxRetryCount: Int = 2,
     private val clock: () -> Long = { System.currentTimeMillis() },
 ) {
+    companion object {
+        private const val AUDIO_LOG_TAG = "BlasterAudioIdentity"
+    }
     suspend fun process(localSong: LocalSong, forceScenario: String? = null): LifecycleState {
         repository.saveLocalSong(localSong)
 
@@ -318,6 +321,12 @@ class FeaturePipeline(
             )
             is AudioIdentifyInputResult.Success -> {
                 repository.saveAudioIdentitySummary(generated.summary)
+                safeAudioLog(
+                    "extracted localSongId=${item.localSongId} algorithm=${generated.summary.algorithm}" +
+                        " version=${generated.summary.algorithmVersion}" +
+                        " digest=${generated.summary.payloadDigest ?: "null"}" +
+                        " payloadSize=${generated.request.payload.size}",
+                )
                 if (!audioCompareEnabled) {
                     val previous = repository.getResult(item.localSongId)?.lifecycleState
                     val fallbackState = if (previous == LifecycleState.CANDIDATE_ASSOCIATED) {
@@ -332,14 +341,19 @@ class FeaturePipeline(
                         lastReason = "audio_extracted_compare_disabled",
                         updatedAtMs = clock(),
                     )
+                    safeAudioLog(
+                        "compare_skipped localSongId=${item.localSongId} reason=audio_extracted_compare_disabled",
+                    )
                     AudioIdentityItemOutput(
                         state = fallbackState,
                         extracted = true,
                         compared = false,
                     )
                 } else {
+                    val comparedState = runAudioIdentityMatch(generated.request)
+                    safeAudioLog("compare_executed localSongId=${item.localSongId} state=$comparedState")
                     AudioIdentityItemOutput(
-                        state = runAudioIdentityMatch(generated.request),
+                        state = comparedState,
                         extracted = true,
                         compared = true,
                     )
@@ -537,6 +551,17 @@ class FeaturePipeline(
             }
 
             val reason = response.rejectReason?.lowercase()
+            if (reason == "service_not_configured") {
+                repository.saveMatchResult(
+                    localSongId = localSongId,
+                    matchResponse = response,
+                    lifecycleState = LifecycleState.UNASSOCIATED,
+                    retryCount = attempt,
+                    lastReason = response.rejectReason,
+                    updatedAtMs = clock(),
+                )
+                return LifecycleState.UNASSOCIATED
+            }
             if (reason == "degraded") {
                 repository.saveMatchResult(
                     localSongId = localSongId,
@@ -566,6 +591,17 @@ class FeaturePipeline(
 
     fun markOutdated(localSongId: String) {
         repository.markOutdated(localSongId, updatedAtMs = clock())
+    }
+
+    private fun safeAudioLog(message: String) {
+        val line = "I/$AUDIO_LOG_TAG: $message"
+        runCatching {
+            val logClass = Class.forName("android.util.Log")
+            val method = logClass.getMethod("i", String::class.java, String::class.java)
+            method.invoke(null, AUDIO_LOG_TAG, message)
+        }.getOrElse {
+            println(line)
+        }
     }
 }
 

@@ -98,7 +98,7 @@ adb shell am start -n com.orion.blaster.demo/.MainActivity
 
 ### 3. 音频指纹阶段（MVP-3）
 
-说明：`Run Audio Identity` 默认是“提取优先、比对可选”。`Audio Compare=OFF` 时只做端上提取并保存摘要，不调用云端比对。
+说明：`Run Audio Identity` 默认是“提取优先、比对可选”。`Audio Compare=OFF` 时只做端上提取并保存摘要，不调用云端比对。当前提取链路使用 `DefaultAudioIdentifyInputGenerator + AudioFingerprintExtractor + NativeChromaprintBridge`，`payload/payloadDigest` 来自真实 Chromaprint JNI 提取，不是手工拼接字符串。
 
 设置：
 

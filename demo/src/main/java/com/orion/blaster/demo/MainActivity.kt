@@ -10,21 +10,19 @@ import android.widget.Spinner
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
-import com.orion.blaster.core.audioidentity.AudioIdentifyInputGenerator
-import com.orion.blaster.core.audioidentity.AudioIdentifyInputResult
+import com.orion.blaster.core.audioidentity.DefaultAudioIdentifyInputGenerator
 import com.orion.blaster.core.audioqueue.AudioIdentityQueue
-import com.orion.blaster.core.audioqueue.AudioIdentityQueueItem
 import com.orion.blaster.core.decoder.PcmDecodeFailureReason
 import com.orion.blaster.core.decoder.PcmDecodeResult
 import com.orion.blaster.core.decoder.PcmDecoder
 import com.orion.blaster.core.embedding.LocalEmbeddingModel
 import com.orion.blaster.core.featurequeue.LocalFeatureQueue
 import com.orion.blaster.core.featuretoggle.LocalFeatureToggle
-import com.orion.blaster.core.gateway.AudioIdentityMatchRequest
+import com.orion.blaster.core.fingerprint.AudioFingerprintExtractor
+import com.orion.blaster.core.fingerprint.NativeChromaprintBridge
 import com.orion.blaster.core.gateway.NoopCloudMatchGateway
 import com.orion.blaster.core.localfeature.model.FileEmbeddingModelSource
 import com.orion.blaster.core.localfeature.model.ModelArtifactInfo
-import com.orion.blaster.core.model.AudioIdentitySummary
 import com.orion.blaster.core.modelinput.AudioModelInput
 import com.orion.blaster.core.modelinput.AudioModelInputGenerator
 import com.orion.blaster.core.modelinput.AudioModelInputRequest
@@ -45,6 +43,7 @@ import com.orion.blaster.core.scheduler.LocalFeatureScheduler
 import com.orion.blaster.core.store.InMemoryFeatureRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.launch
 import java.io.File
 
@@ -134,8 +133,10 @@ class MainActivity : AppCompatActivity() {
         }
         outdatedButton.setOnClickListener {
             repository.getAllLocalSongIds().firstOrNull()?.let { songId ->
-                buildPipeline().markOutdated(songId)
-                renderResult(resultText)
+                uiScope.launch {
+                    withContext(Dispatchers.Default) { buildPipeline().markOutdated(songId) }
+                    renderResult(resultText)
+                }
             } ?: Toast.makeText(this, "Run scan first.", Toast.LENGTH_SHORT).show()
         }
         resultText.text = "Use MEDIA_STORE, then run scan -> audio identity -> local feature."
@@ -147,7 +148,9 @@ class MainActivity : AppCompatActivity() {
             ensureAudioPermission()
             return
         }
-        latestSummary = buildPipeline().scanAndProcess(source = source, forceScenario = scenario)
+        latestSummary = withContext(Dispatchers.Default) {
+            buildPipeline().scanAndProcess(source = source, forceScenario = scenario)
+        }
         renderResult(resultView)
     }
 
@@ -165,15 +168,17 @@ class MainActivity : AppCompatActivity() {
             queue = AudioIdentityQueue(repository),
             deviceStateProvider = { deviceStateForGuard(guard) },
         )
-        latestAudioSummary = buildPipeline().processAudioIdentityQueue(
-            scheduler = scheduler,
-            forceScenario = scenario,
-            audioCompareEnabled = compareEnabled,
-        )
+        latestAudioSummary = withContext(Dispatchers.Default) {
+            buildPipeline().processAudioIdentityQueue(
+                scheduler = scheduler,
+                forceScenario = scenario,
+                audioCompareEnabled = compareEnabled,
+            )
+        }
         renderResult(resultView)
     }
 
-    private fun runLocalFeature(guard: String, includeCandidate: Boolean, resultView: TextView) {
+    private suspend fun runLocalFeature(guard: String, includeCandidate: Boolean, resultView: TextView) {
         if (latestSummary == null) {
             resultView.text = "Run scan first."
             return
@@ -187,18 +192,21 @@ class MainActivity : AppCompatActivity() {
             ),
             deviceStateProvider = { localFeatureDeviceStateForGuard(guard) },
         )
-        latestLocalFeatureSummary = buildPipeline().processLocalFeatureQueue(scheduler = scheduler)
+        latestLocalFeatureSummary = withContext(Dispatchers.Default) {
+            buildPipeline().processLocalFeatureQueue(scheduler = scheduler)
+        }
         renderResult(resultView)
     }
 
-    private fun renderResult(resultView: TextView) {
+    private suspend fun renderResult(resultView: TextView) {
         val summary = latestSummary ?: run {
             resultView.text = "No scan result yet."
             return
         }
-        val songIds = repository.getAllLocalSongIds().sorted()
-        val results = resultProvider.getResults(songIds)
-        resultView.text = buildString {
+        val rendered = withContext(Dispatchers.Default) {
+            val songIds = repository.getAllLocalSongIds().sorted()
+            val results = resultProvider.getResults(songIds)
+            buildString {
             appendLine("summary:")
             appendLine(
                 "scanned=${summary.scannedCount}, new=${summary.newCount}, changed=${summary.changedCount}, " +
@@ -225,11 +233,26 @@ class MainActivity : AppCompatActivity() {
             }
             appendLine()
             appendLine("scanned songs:")
-            songIds.forEach { songId ->
+            songIds.take(200).forEach { songId ->
                 repository.getLocalSong(songId)?.let { song ->
                     appendLine(
                         "${song.localSongId} | title=${song.title ?: "null"} | artist=${song.artist ?: "null"} | " +
                             "signature=${song.contentSignature ?: "null"} | state=${song.sourceState}",
+                    )
+                }
+            }
+            if (songIds.size > 200) {
+                appendLine("... (${songIds.size - 200} more songs omitted)")
+            }
+            appendLine()
+            appendLine("audio identity summaries (first 50):")
+            songIds.take(50).forEach { songId ->
+                repository.getAudioIdentitySummary(songId)?.let { summary ->
+                    appendLine(
+                        "${summary.localSongId} | algorithm=${summary.algorithm} | " +
+                            "version=${summary.algorithmVersion} | clip=${summary.clipPolicy} | " +
+                            "encoding=${summary.payloadEncoding} | digest=${summary.payloadDigest ?: "null"} | " +
+                            "costMs=${summary.costMs ?: "null"} | reason=${summary.lastReason ?: "null"}",
                     )
                 }
             }
@@ -247,13 +270,20 @@ class MainActivity : AppCompatActivity() {
                 )
             }
         }
+        }
+        resultView.text = rendered
     }
 
     private fun buildPipeline(): FeaturePipeline {
         return FeaturePipeline(
             gateway = gateway,
             repository = repository,
-            audioIdentifyInputGenerator = MainAudioIdentifyInputGenerator(),
+            audioIdentifyInputGenerator = DefaultAudioIdentifyInputGenerator(
+                pcmDecoder = PcmDecoder(applicationContext),
+                fingerprintExtractor = AudioFingerprintExtractor(
+                    bridge = NativeChromaprintBridge(),
+                ),
+            ),
             audioModelInputGenerator = MainAudioModelInputGenerator(),
             localEmbeddingModel = createLocalEmbeddingModel(),
             testResourceScanner = null,
@@ -320,38 +350,6 @@ class MainActivity : AppCompatActivity() {
                 return AudioModelInputResult.Failure("inaccessible_uri:uri is null")
             }
             return delegate.generate(request)
-        }
-    }
-
-    private class MainAudioIdentifyInputGenerator : AudioIdentifyInputGenerator {
-        override fun generate(item: AudioIdentityQueueItem, forceScenario: String?): AudioIdentifyInputResult {
-            val payloadText = "audio-identity:${item.localSongId}:${item.contentSignature ?: "no-signature"}"
-            val payload = payloadText.toByteArray(Charsets.UTF_8)
-            val digest = "digest:${payload.size}:${payload.firstOrNull()?.toInt() ?: 0}"
-            return AudioIdentifyInputResult.Success(
-                request = AudioIdentityMatchRequest(
-                    localSongId = item.localSongId,
-                    durationMs = item.durationMs,
-                    clipPolicy = "middle-60s",
-                    algorithm = "chromaprint-compatible",
-                    algorithmVersion = "mvp4-local",
-                    payloadEncoding = "base64",
-                    payload = payload,
-                    basicInfo = item.basicInfo,
-                    forceScenario = forceScenario,
-                ),
-                summary = AudioIdentitySummary(
-                    localSongId = item.localSongId,
-                    algorithm = "chromaprint-compatible",
-                    algorithmVersion = "mvp4-local",
-                    clipPolicy = "middle-60s",
-                    payloadEncoding = "base64",
-                    payloadDigest = digest,
-                    costMs = 1L,
-                    lastReason = null,
-                    updatedAtMs = System.currentTimeMillis(),
-                ),
-            )
         }
     }
 

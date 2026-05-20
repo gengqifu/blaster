@@ -789,3 +789,18 @@ MVP-4 完成后需要向后续阶段交接：
   - `extractedCount`
   - `comparedCount`
   - `compareSkippedCount`
+
+### 17.8 真实指纹提取落地（移除手工 payload）
+
+验收记录：
+
+- `demo` 主流程已切换到真实音频指纹提取链路：
+  - `DefaultAudioIdentifyInputGenerator`
+  - `PcmDecoder`
+  - `AudioFingerprintExtractor`
+  - `NativeChromaprintBridge`
+- 已移除主代码手工拼接 payload 路径（`audio-identity:*`）和伪版本标识（`mvp4-local`）。
+- 屏幕证据：
+  - `audio identity summaries (first 50)` 显示 `algorithm/version/payloadEncoding/payloadDigest/costMs`
+- 日志证据：
+  - `BlasterAudioIdentity` 日志输出 `extracted ... digest=sha256:... payloadSize=...`

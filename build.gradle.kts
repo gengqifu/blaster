@@ -18,6 +18,8 @@ tasks.register("checkMainNoMock") {
             "content://demo/",
             "DemoAudio",
             "not wired",
+            "audio-identity:",
+            "mvp4-local",
         )
         val violations = mutableListOf<String>()
         roots.filter { it.exists() }.forEach { root ->
