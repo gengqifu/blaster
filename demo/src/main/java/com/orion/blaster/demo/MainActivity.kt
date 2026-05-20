@@ -21,9 +21,9 @@ import com.orion.blaster.core.embedding.LocalEmbeddingModel
 import com.orion.blaster.core.featurequeue.LocalFeatureQueue
 import com.orion.blaster.core.featuretoggle.LocalFeatureToggle
 import com.orion.blaster.core.gateway.AudioIdentityMatchRequest
+import com.orion.blaster.core.gateway.NoopCloudMatchGateway
 import com.orion.blaster.core.localfeature.model.FileEmbeddingModelSource
 import com.orion.blaster.core.localfeature.model.ModelArtifactInfo
-import com.orion.blaster.core.mock.MockCloudMatchGateway
 import com.orion.blaster.core.model.AudioIdentitySummary
 import com.orion.blaster.core.modelinput.AudioModelInput
 import com.orion.blaster.core.modelinput.AudioModelInputGenerator
@@ -75,7 +75,7 @@ class MainActivity : AppCompatActivity() {
     )
     private val localFeatureCandidateToggle = listOf("UNASSOCIATED_ONLY", "INCLUDE_CANDIDATE")
     private val repository = InMemoryFeatureRepository()
-    private val gateway = MockCloudMatchGateway()
+    private val gateway = NoopCloudMatchGateway()
     private val resultProvider = ResultProvider(repository)
     private val uiScope = CoroutineScope(Dispatchers.Main)
 
