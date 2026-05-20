@@ -489,7 +489,7 @@ MVP-4 完成后需要向后续阶段交接：
 
 - [x] 里程碑 1：文档、ADR 与最小真实工程验证
 - [x] 里程碑 2：本地特征契约、队列与存储基线
-- [ ] 里程碑 3：模型输入生成与 YAMNet 推理接入
+- [x] 里程碑 3：模型输入生成与 YAMNet 推理接入
 - [ ] 里程碑 4：Scheduler 与 Pipeline 本地特征阶段
 - [ ] 里程碑 5：ResultProvider、Demo 与最终验收
 
@@ -589,6 +589,28 @@ MVP-4 完成后需要向后续阶段交接：
 - top-K 被明确限制为 internal diagnostics，不进入业务结果。
 - 推理失败路径、模型缺失路径、加载失败路径都有明确验收口径。
 - 单元测试要求能够直接映射到模型输入/推理代码。
+
+验收记录：
+
+- 代码产物：
+  - `core/src/main/java/com/orion/blaster/core/modelinput/AudioModelInputGenerator.kt`
+  - `core/src/main/java/com/orion/blaster/core/embedding/LocalEmbeddingModel.kt`
+- 输入策略与产物边界：
+  - `AudioModelInputGenerator` 已复用现有 PCM 解码路径并输出固定长度输入
+  - `LocalEmbeddingModel` 已输出 `LocalFeature`（embedding/modelVersion/schemaVersion）
+  - top-K 仅进入 `LocalFeatureDiagnostics`，不进入对外 `LocalFeature` 字段
+- 失败路径覆盖：
+  - 模型缺失：`model_missing:*`
+  - 模型加载失败：`model_load_failed:*`
+  - 推理失败：`inference_failed:*`
+- 测试产物：
+  - `core/src/test/java/com/orion/blaster/core/modelinput/AudioModelInputGeneratorTest.kt`
+  - `core/src/test/java/com/orion/blaster/core/embedding/LocalEmbeddingModelTest.kt`
+- 测试结果：
+  - `./gradlew :core:testDebugUnitTest --tests '*AudioModelInputGeneratorTest' --tests '*LocalEmbeddingModelTest' --tests '*LocalFeatureQueueTest' --tests '*InMemoryFeatureRepositoryTest' --no-daemon` 通过
+  - `./gradlew :core:testDebugUnitTest --no-daemon` 通过
+- 里程碑结论：
+  - 里程碑 3 完成，允许进入里程碑 4
 
 ### 16.4 里程碑 4：Scheduler 与 Pipeline 本地特征阶段
 
