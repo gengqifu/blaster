@@ -42,6 +42,36 @@ Leaving those choices open would make the repository contract, scheduler semanti
 12. Documentation and ADR updates alone do NOT satisfy MVP-4 milestone 1 completion.
 13. If model source, licensing, Android loading, runtime integration, or the minimum feasibility gate fails, implementation MUST stop at MVP-4 milestone 1 and update the plan/decision log before continuing.
 
+## Milestone 1 Validation Record
+
+- Validation date: `2026-05-20`
+- Selected artifact:
+  - file name: `yamnet.tflite`
+  - source URL: `https://tfhub.dev/google/lite-model/yamnet/tflite/1?lite-format=tflite`
+  - SHA-256: `141fba1cdaae842c816f28edc4937e8b4f0af4c8df21862ccc6b52dc567993c3`
+  - associated files: none for the first validation pass
+- Runtime dependency:
+  - `org.tensorflow:tensorflow-lite:2.14.0`
+- Package size record:
+  - model file: `16,096,668` bytes
+  - TFLite AAR: `16,304,220` bytes
+  - combined validation footprint: about `32.4MB`
+  - conclusion: exceeds the default `20MB` target; acceptable for MVP-4 development validation only, and must be addressed by later productization packaging / cloud-download strategy
+- License / redistribution conclusion:
+  - first-pass validation uses the official TFHub-distributed YAMNet TFLite artifact
+  - MVP-4 proceeds under upstream `Apache-2.0` notice handling
+- Android-side feasibility result:
+  - device command: `adb -s S4VCMV95CATGQGT4 shell am instrument -w -e class com.orion.blaster.demo.YamnetInstrumentationTest com.orion.blaster.demo.test/androidx.test.runner.AndroidJUnitRunner`
+  - result: `OK (1 test)`
+  - recorded model summary:
+    - `inputShape=[1]`
+    - `outputShapes=[[1, 521], [1, 1024], [1, 64]]`
+    - `embeddingOutputIndex=1`
+    - `embeddingVectorCount=1024`
+- Milestone 1 decision:
+  - the minimum Android-side YAMNet feasibility gate passed
+  - MVP-4 may continue to milestone 2
+
 ## Impact Scope
 
 - Affects MVP-4 document Section 5, milestone 1 exit criteria, Android dependency selection, model asset handling, package budget discussion, and demo feasibility expectations.
