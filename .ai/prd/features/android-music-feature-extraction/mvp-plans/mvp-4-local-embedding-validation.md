@@ -691,7 +691,7 @@ MVP-4 完成后需要向后续阶段交接：
 
 - [x] Step 1：建立主代码禁 Mock 红线
 - [x] Step 2：真实接入 MediaStore 扫描
-- [ ] Step 3：移除主流程中的测试扫描器与硬编码 demo 歌曲
+- [x] Step 3：移除主流程中的测试扫描器与硬编码 demo 歌曲
 - [ ] Step 4：移除假音频输入分支，统一真实解码
 - [ ] Step 5：主代码替换 MockCloud 网关（不接后端，返回明确失败语义）
 - [ ] Step 6：收口验收与防回归
@@ -721,3 +721,15 @@ MVP-4 完成后需要向后续阶段交接：
   - `READ_EXTERNAL_STORAGE`（Android 12 及以下）
 - 构建验证通过：
   - `./gradlew :core:assemble :demo:assembleDebug --no-daemon`
+
+### 17.3 Step 3：移除主流程中的测试扫描器与硬编码 demo 歌曲
+
+验收记录：
+
+- `demo/src/main/java/com/orion/blaster/demo/MainActivity.kt` 主流程已移除：
+  - `TestLocalSongScanner`
+  - `TestSongRecord`
+  - `stableRecords()/changedSignatureRecords()` 假数据路径
+- Demo 扫描源改为 `MEDIA_STORE` 真实路径，扫描展示基于仓储中的真实歌曲数据。
+- 构建验证通过：
+  - `./gradlew :demo:assembleDebug --no-daemon`

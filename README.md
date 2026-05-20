@@ -83,8 +83,7 @@ adb shell am start -n com.orion.blaster.demo/.MainActivity
 
 在页面中设置：
 
-- `Scan Source` 优先选 `MEDIA_STORE`（真实设备媒体库）
-- 若设备没有本地音频，可临时选 `TEST_RESOURCES`
+- `Scan Source` 选 `MEDIA_STORE`（真实设备媒体库）
 - `Match Scenario` 先选 `NONE`
 
 点击：
