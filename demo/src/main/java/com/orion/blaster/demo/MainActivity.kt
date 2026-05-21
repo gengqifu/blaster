@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.util.Log
 import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.Spinner
@@ -46,10 +47,15 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.launch
 import java.io.File
+import java.util.Locale
 
 class MainActivity : AppCompatActivity() {
     companion object {
         private const val READ_AUDIO_PERMISSION_REQ = 1001
+        private const val LOCAL_FEATURE_LOG_TAG = "BlasterLocalFeature"
+        private const val EMBEDDING_PREVIEW_COUNT = 16
+        private const val LOCAL_FEATURE_BATCH_SIZE = 5
+        private const val LOCAL_FEATURE_MAX_DURATION_MS = 180_000L
     }
 
     private val scenarios = listOf("RELIABLE", "CANDIDATE", "NONE", "ERROR", "TIMEOUT", "DEGRADED")
@@ -82,6 +88,15 @@ class MainActivity : AppCompatActivity() {
     private var latestSummary: ScanProcessSummary? = null
     private var latestAudioSummary: AudioIdentityProcessSummary? = null
     private var latestLocalFeatureSummary: LocalFeatureProcessSummary? = null
+    private var latestLocalFeatureDrainSummary: LocalFeatureDrainSummary? = null
+
+    private data class LocalFeatureDrainSummary(
+        val rounds: Int,
+        val elapsedMs: Long,
+        val processedCount: Int,
+        val remainingRunnableEstimate: Int,
+        val stopReason: String,
+    )
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -179,8 +194,13 @@ class MainActivity : AppCompatActivity() {
     }
 
     private suspend fun runLocalFeature(guard: String, includeCandidate: Boolean, resultView: TextView) {
+        Log.i(
+            LOCAL_FEATURE_LOG_TAG,
+            "run_local_feature_clicked guard=$guard includeCandidate=$includeCandidate hasScan=${latestSummary != null}",
+        )
         if (latestSummary == null) {
             resultView.text = "Run scan first."
+            Log.i(LOCAL_FEATURE_LOG_TAG, "run_local_feature_skipped reason=no_scan_result")
             return
         }
         val scheduler = LocalFeatureScheduler(
@@ -192,9 +212,88 @@ class MainActivity : AppCompatActivity() {
             ),
             deviceStateProvider = { localFeatureDeviceStateForGuard(guard) },
         )
-        latestLocalFeatureSummary = withContext(Dispatchers.Default) {
-            buildPipeline().processLocalFeatureQueue(scheduler = scheduler)
+        val startedAtMs = System.currentTimeMillis()
+        var rounds = 0
+        var scheduledTotal = 0
+        var waitingTotal = 0
+        var readyTotal = 0
+        var failedTotal = 0
+        var skippedTotal = 0
+        var stopReason = "queue_empty"
+        val loggedSongIds = mutableSetOf<String>()
+        try {
+            while (true) {
+                val elapsedMs = System.currentTimeMillis() - startedAtMs
+                if (elapsedMs >= LOCAL_FEATURE_MAX_DURATION_MS) {
+                    stopReason = "timeout"
+                    break
+                }
+                rounds += 1
+                Log.i(
+                    LOCAL_FEATURE_LOG_TAG,
+                    "drain_round_start roundIndex=$rounds batchSize=$LOCAL_FEATURE_BATCH_SIZE elapsedMs=$elapsedMs",
+                )
+                val roundSummary = withContext(Dispatchers.Default) {
+                    buildPipeline().processLocalFeatureQueue(
+                        scheduler = scheduler,
+                        maxBatchSize = LOCAL_FEATURE_BATCH_SIZE,
+                    )
+                }
+                scheduledTotal += roundSummary.scheduledCount
+                waitingTotal += roundSummary.waitingCount
+                readyTotal += roundSummary.readyCount
+                failedTotal += roundSummary.failedCount
+                skippedTotal += roundSummary.skippedCount
+                Log.i(
+                    LOCAL_FEATURE_LOG_TAG,
+                    "drain_round_result roundIndex=$rounds scheduled=${roundSummary.scheduledCount} " +
+                        "waiting=${roundSummary.waitingCount} ready=${roundSummary.readyCount} " +
+                        "failed=${roundSummary.failedCount} skipped=${roundSummary.skippedCount} " +
+                        "elapsedMs=${System.currentTimeMillis() - startedAtMs}",
+                )
+                withContext(Dispatchers.Default) { logNewLocalFeatureSummaries(loggedSongIds, rounds) }
+                if (roundSummary.scheduledCount == 0) {
+                    stopReason = "queue_empty"
+                    break
+                }
+            }
+        } catch (t: Throwable) {
+            Log.e(LOCAL_FEATURE_LOG_TAG, "run_local_feature_failed reason=${t.message}", t)
+            resultView.text = "Run local feature failed: ${t.message ?: t::class.simpleName}"
+            return
         }
+        val remainingRunnableEstimate = withContext(Dispatchers.Default) {
+            scheduler.schedule(Int.MAX_VALUE).runnableItems.size
+        }
+        val elapsedMs = System.currentTimeMillis() - startedAtMs
+        latestLocalFeatureSummary = LocalFeatureProcessSummary(
+            scheduledCount = scheduledTotal,
+            waitingCount = waitingTotal,
+            readyCount = readyTotal,
+            failedCount = failedTotal,
+            skippedCount = skippedTotal,
+        )
+        latestLocalFeatureDrainSummary = LocalFeatureDrainSummary(
+            rounds = rounds,
+            elapsedMs = elapsedMs,
+            processedCount = readyTotal + failedTotal + skippedTotal,
+            remainingRunnableEstimate = remainingRunnableEstimate,
+            stopReason = stopReason,
+        )
+        Log.i(
+            LOCAL_FEATURE_LOG_TAG,
+            "drain_${if (stopReason == "timeout") "timeout" else "completed"} rounds=$rounds " +
+                "elapsedMs=$elapsedMs processed=${readyTotal + failedTotal + skippedTotal} " +
+                "remainingRunnableEstimate=$remainingRunnableEstimate stopReason=$stopReason",
+        )
+        latestLocalFeatureSummary?.let { summary ->
+            Log.i(
+                LOCAL_FEATURE_LOG_TAG,
+                "run_local_feature_finished scheduled=${summary.scheduledCount} waiting=${summary.waitingCount} " +
+                    "ready=${summary.readyCount} failed=${summary.failedCount} skipped=${summary.skippedCount}",
+            )
+        }
+        Log.i(LOCAL_FEATURE_LOG_TAG, "run_local_feature_stage summaries_logged")
         renderResult(resultView)
     }
 
@@ -231,6 +330,13 @@ class MainActivity : AppCompatActivity() {
                         "ready=${local.readyCount}, failed=${local.failedCount}, skipped=${local.skippedCount}",
                 )
             }
+            latestLocalFeatureDrainSummary?.let { drain ->
+                appendLine(
+                    "localFeatureDrain: rounds=${drain.rounds}, elapsedMs=${drain.elapsedMs}, " +
+                        "processed=${drain.processedCount}, remaining=${drain.remainingRunnableEstimate}, " +
+                        "stopReason=${drain.stopReason}",
+                )
+            }
             appendLine()
             appendLine("scanned songs:")
             songIds.take(200).forEach { songId ->
@@ -263,7 +369,8 @@ class MainActivity : AppCompatActivity() {
                 appendLine(
                     "${result.localSongId} | state=${result.lifecycleState} | " +
                         "association=${result.association?.cloudSongId ?: "null"} | " +
-                        "embedding=${localFeature?.embedding?.size ?: 0} | " +
+                        "embeddingDim=${localFeature?.embedding?.size ?: 0} | " +
+                        "embeddingHead=${formatEmbeddingHead(localFeature?.embedding)} | " +
                         "model=${localFeature?.modelName ?: "null"}@${localFeature?.modelVersion ?: "null"} | " +
                         "schema=${localFeature?.featureSchemaVersion ?: "null"} | " +
                         "lastReason=${result.lastReason ?: "null"}",
@@ -272,6 +379,42 @@ class MainActivity : AppCompatActivity() {
         }
         }
         resultView.text = rendered
+    }
+
+    private fun formatEmbeddingHead(embedding: FloatArray?): String {
+        embedding ?: return "null"
+        if (embedding.isEmpty()) return "[]"
+        val head = embedding.take(EMBEDDING_PREVIEW_COUNT)
+            .joinToString(prefix = "[", postfix = "]") { value ->
+                String.format(Locale.US, "%.6f", value)
+            }
+        return if (embedding.size > EMBEDDING_PREVIEW_COUNT) "$head..." else head
+    }
+
+    private fun logNewLocalFeatureSummaries(loggedSongIds: MutableSet<String>, roundIndex: Int) {
+        val songIds = repository.getAllLocalSongIds().sorted()
+        val resultsBySongId = resultProvider.getResults(songIds).associateBy { it.localSongId }
+        var loggedCount = 0
+        songIds.forEach { songId ->
+            if (songId in loggedSongIds) return@forEach
+            val result = resultsBySongId[songId] ?: return@forEach
+            val localFeature = result.localFeature ?: return@forEach
+            loggedSongIds += songId
+            loggedCount += 1
+            Log.i(
+                LOCAL_FEATURE_LOG_TAG,
+                "extracted roundIndex=$roundIndex localSongId=$songId embeddingDim=${localFeature.embedding.size} " +
+                    "embeddingHead=${formatEmbeddingHead(localFeature.embedding)} " +
+                    "model=${localFeature.modelName}@${localFeature.modelVersion} " +
+                    "schema=${localFeature.featureSchemaVersion}",
+            )
+        }
+        if (loggedCount == 0) {
+            Log.i(
+                LOCAL_FEATURE_LOG_TAG,
+                "extracted none roundIndex=$roundIndex loggedTotal=${loggedSongIds.size} songCount=${songIds.size}",
+            )
+        }
     }
 
     private fun buildPipeline(): FeaturePipeline {

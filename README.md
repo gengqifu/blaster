@@ -132,16 +132,32 @@ adb shell am start -n com.orion.blaster.demo/.MainActivity
 
 预期：
 
+- 单次点击会自动循环处理本地特征队列（每轮 5 首，最多约 180 秒）
 - `localFeature:` 行出现 `scheduled/waiting/ready/failed/skipped`
+- `localFeatureDrain:` 行出现 `rounds/elapsedMs/processed/remaining/stopReason`
 - `local feature diagnostics:` 出现：
   - `model=YAMNet@...`
   - `schema=...`
   - `shape=[...]`
   - `costMs=...`
 - `result provider:` 出现：
-  - `embedding=<非 0 维度>`
+  - `embeddingDim=<非 0 维度>`
+  - `embeddingHead=[前 16 维浮点值]...`
   - `model=YAMNet@...`
   - `schema=...`
+
+日志查看（embedding）：
+
+```bash
+adb logcat -c
+adb logcat -d | rg "BlasterLocalFeature|embeddingDim|embeddingHead"
+```
+
+字段说明：
+
+- `embeddingDim`：完整 embedding 维度。
+- `embeddingHead`：embedding 前 16 维（保留 6 位小数）预览，用于快速校验提取结果。
+- `localFeatureDrain.remaining`：本次 drain 结束后估计剩余可处理歌曲数；若 > 0，可再次点击继续处理。
 
 ### 5. 验证语义边界（重点）
 
@@ -150,7 +166,7 @@ adb shell am start -n com.orion.blaster.demo/.MainActivity
 1. `Match Scenario` 选 `NONE`，先跑扫描（让歌曲处于非可靠关联）
 2. 执行 `Run Local Feature`
 3. 查看 `result provider:` 同一行中：
-   - 有 `embedding`
+   - 有 `embeddingDim` 和 `embeddingHead`
    - `association` 仍可能是 `null`（或仍是候选语义）
 
 这说明本地特征可用不代表云端可靠关联。
