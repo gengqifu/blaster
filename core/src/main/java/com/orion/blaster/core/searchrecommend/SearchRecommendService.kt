@@ -40,11 +40,20 @@ class DefaultSearchRecommendService(
         if (repository.getLocalSong(inputSongId) == null) {
             return invalidInput(mode, "song_not_found", "Input song is not available")
         }
+        val inputLocalSong = repository.getLocalSong(inputSongId) ?: return invalidInput(
+            mode,
+            "song_not_found",
+            "Input song is not available",
+        )
         return engine.execute(
             SearchRecommendRequest(
                 mode = mode,
                 inputSongId = inputSongId,
                 topK = topK,
+                inputLocalSong = inputLocalSong,
+                inputBasicInfo = repository.getBasicInfo(inputSongId),
+                inputAudioIdentitySummary = repository.getAudioIdentitySummary(inputSongId),
+                inputLocalFeature = repository.getLocalFeature(inputSongId),
             ),
         )
     }

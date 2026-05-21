@@ -55,6 +55,10 @@ data class SearchRecommendRequest(
     val mode: SearchRecommendMode,
     val inputSongId: String,
     val topK: Int,
+    val inputLocalSong: LocalSong,
+    val inputBasicInfo: BasicSongInfo?,
+    val inputAudioIdentitySummary: AudioIdentitySummary?,
+    val inputLocalFeature: LocalFeature?,
 )
 
 data class RetrievalCandidate(
