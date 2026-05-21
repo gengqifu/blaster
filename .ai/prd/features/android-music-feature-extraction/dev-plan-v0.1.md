@@ -51,6 +51,7 @@
 | MVP-2 | `mvp-plans/mvp-2-local-scan-basic-match.md` | 已补齐 |
 | MVP-3 | `mvp-plans/mvp-3-audio-fingerprint-mock-match.md` | 已补齐 |
 | MVP-4 | `mvp-plans/mvp-4-local-embedding-validation.md` | 已补齐 |
+| Search/Recommend（新增） | `tech-design-search-recommend-v0.1.md`、`dev-plan-search-recommend-v0.1.md`、`decisions/2026-05-21-search-recommend-sdk-contract-policy.md`、`decisions/2026-05-21-search-recommend-ranking-policy.md`、`decisions/2026-05-21-search-recommend-hybrid-extension-policy.md` | 规划中 |
 
 ## 4. MVP-1：客户端 Mock 闭环骨架
 
@@ -318,6 +319,15 @@
 - 详细拆分与每步完成标准见：`mvp-plans/mvp-4-local-embedding-validation.md` 第 16 章“执行拆分（5 个里程碑）”。
 
 ## 8. 调用方验收标准
+
+### 8.0 Search/Recommend 文档入口
+
+- 端侧搜索与推荐能力技术设计：`tech-design-search-recommend-v0.1.md`
+- 端侧搜索与推荐能力开发计划：`dev-plan-search-recommend-v0.1.md`
+- SDK 契约 ADR：`decisions/2026-05-21-search-recommend-sdk-contract-policy.md`
+- 排序与降级 ADR：`decisions/2026-05-21-search-recommend-ranking-policy.md`
+- 端云混排扩展 ADR：`decisions/2026-05-21-search-recommend-hybrid-extension-policy.md`
+- 本节仅作引用入口，具体接口、策略、降级与里程碑以对应文档为准。
 
 ### 8.1 搜索侧
 
