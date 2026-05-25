@@ -41,6 +41,13 @@ import com.orion.blaster.core.scheduler.AudioIdentityDeviceState
 import com.orion.blaster.core.scheduler.AudioIdentityScheduler
 import com.orion.blaster.core.scheduler.LocalFeatureDeviceState
 import com.orion.blaster.core.scheduler.LocalFeatureScheduler
+import com.orion.blaster.core.searchrecommend.DefaultLocalRanker
+import com.orion.blaster.core.searchrecommend.DefaultSearchRecommendService
+import com.orion.blaster.core.searchrecommend.HybridRetrievalEngine
+import com.orion.blaster.core.searchrecommend.LocalSource
+import com.orion.blaster.core.searchrecommend.SearchRecommendMode
+import com.orion.blaster.core.searchrecommend.SearchRecommendResponse
+import com.orion.blaster.core.searchrecommend.SearchRecommendService
 import com.orion.blaster.core.store.InMemoryFeatureRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -53,9 +60,11 @@ class MainActivity : AppCompatActivity() {
     companion object {
         private const val READ_AUDIO_PERMISSION_REQ = 1001
         private const val LOCAL_FEATURE_LOG_TAG = "BlasterLocalFeature"
+        private const val SEARCH_RECOMMEND_LOG_TAG = "BlasterSearchRecommend"
         private const val EMBEDDING_PREVIEW_COUNT = 16
         private const val LOCAL_FEATURE_BATCH_SIZE = 5
         private const val LOCAL_FEATURE_MAX_DURATION_MS = 180_000L
+        private const val SEARCH_RECOMMEND_TOP_K = 5
     }
 
     private val scenarios = listOf("RELIABLE", "CANDIDATE", "NONE", "ERROR", "TIMEOUT", "DEGRADED")
@@ -84,11 +93,14 @@ class MainActivity : AppCompatActivity() {
     private val gateway = NoopCloudMatchGateway()
     private val resultProvider = ResultProvider(repository)
     private val uiScope = CoroutineScope(Dispatchers.Main)
+    private lateinit var searchSeedAdapter: ArrayAdapter<String>
 
     private var latestSummary: ScanProcessSummary? = null
     private var latestAudioSummary: AudioIdentityProcessSummary? = null
     private var latestLocalFeatureSummary: LocalFeatureProcessSummary? = null
     private var latestLocalFeatureDrainSummary: LocalFeatureDrainSummary? = null
+    private var latestSearchResponse: SearchRecommendResponse? = null
+    private var latestRecommendResponse: SearchRecommendResponse? = null
 
     private data class LocalFeatureDrainSummary(
         val rounds: Int,
@@ -110,10 +122,13 @@ class MainActivity : AppCompatActivity() {
         val audioCompareSpinner = findViewById<Spinner>(R.id.audioCompareSpinner)
         val localFeatureGuardSpinner = findViewById<Spinner>(R.id.localFeatureGuardSpinner)
         val localFeatureCandidateSpinner = findViewById<Spinner>(R.id.localFeatureCandidateSpinner)
+        val searchSeedSpinner = findViewById<Spinner>(R.id.searchSeedSpinner)
         val runButton = findViewById<Button>(R.id.runButton)
         val changedScanButton = findViewById<Button>(R.id.changedScanButton)
         val runAudioButton = findViewById<Button>(R.id.runAudioButton)
         val runLocalFeatureButton = findViewById<Button>(R.id.runLocalFeatureButton)
+        val runSearchButton = findViewById<Button>(R.id.runSearchButton)
+        val runRecommendButton = findViewById<Button>(R.id.runRecommendButton)
         val outdatedButton = findViewById<Button>(R.id.outdatedButton)
         val resultText = findViewById<TextView>(R.id.resultText)
 
@@ -126,6 +141,8 @@ class MainActivity : AppCompatActivity() {
             ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, localFeatureGuards)
         localFeatureCandidateSpinner.adapter =
             ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, localFeatureCandidateToggle)
+        searchSeedAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, mutableListOf())
+        searchSeedSpinner.adapter = searchSeedAdapter
 
         runButton.setOnClickListener {
             val scenario = spinner.selectedItem as String
@@ -145,6 +162,14 @@ class MainActivity : AppCompatActivity() {
             val guard = localFeatureGuardSpinner.selectedItem as String
             val includeCandidate = (localFeatureCandidateSpinner.selectedItem as String) == "INCLUDE_CANDIDATE"
             uiScope.launch { runLocalFeature(guard, includeCandidate, resultText) }
+        }
+        runSearchButton.setOnClickListener {
+            val seedSongId = searchSeedSpinner.selectedItem as? String
+            uiScope.launch { runSearchRecommend(SearchRecommendMode.SEARCH, seedSongId, resultText) }
+        }
+        runRecommendButton.setOnClickListener {
+            val seedSongId = searchSeedSpinner.selectedItem as? String
+            uiScope.launch { runSearchRecommend(SearchRecommendMode.RECOMMEND, seedSongId, resultText) }
         }
         outdatedButton.setOnClickListener {
             repository.getAllLocalSongIds().firstOrNull()?.let { songId ->
@@ -166,6 +191,34 @@ class MainActivity : AppCompatActivity() {
         latestSummary = withContext(Dispatchers.Default) {
             buildPipeline().scanAndProcess(source = source, forceScenario = scenario)
         }
+        updateSearchSeedSongs(repository.getAllLocalSongIds().sorted())
+        renderResult(resultView)
+    }
+
+    private suspend fun runSearchRecommend(
+        mode: SearchRecommendMode,
+        seedSongId: String?,
+        resultView: TextView,
+    ) {
+        if (latestSummary == null) {
+            resultView.text = "Run scan first."
+            return
+        }
+        if (seedSongId.isNullOrBlank()) {
+            resultView.text = "Select a seed song first."
+            return
+        }
+        val response = withContext(Dispatchers.Default) {
+            when (mode) {
+                SearchRecommendMode.SEARCH -> buildSearchRecommendService().search(seedSongId, SEARCH_RECOMMEND_TOP_K)
+                SearchRecommendMode.RECOMMEND -> buildSearchRecommendService().recommend(seedSongId, SEARCH_RECOMMEND_TOP_K)
+            }
+        }
+        when (mode) {
+            SearchRecommendMode.SEARCH -> latestSearchResponse = response
+            SearchRecommendMode.RECOMMEND -> latestRecommendResponse = response
+        }
+        logSearchRecommendResponse(mode, seedSongId, response)
         renderResult(resultView)
     }
 
@@ -337,6 +390,48 @@ class MainActivity : AppCompatActivity() {
                         "stopReason=${drain.stopReason}",
                 )
             }
+            latestSearchResponse?.let { response ->
+                appendLine()
+                appendLine("search response:")
+                appendLine(
+                    "requestId=${response.requestId}, status=${response.status}, " +
+                        "before=${response.diagnostics.candidateCountBeforeRank}, " +
+                        "after=${response.diagnostics.candidateCountAfterRank}, " +
+                        "latencyMs=${response.diagnostics.latencyMs}, " +
+                        "degradePath=${response.diagnostics.degradePath ?: "null"}",
+                )
+                response.results.forEach { result ->
+                    appendLine(
+                        "${result.localSongId} | score=${String.format(Locale.US, "%.6f", result.score)} | " +
+                            "reasons=${result.reasons.joinToString(",")} | " +
+                            "signals=metadata=${result.signals.hasMetadata}, " +
+                            "audio=${result.signals.hasAudioIdentity}, " +
+                            "feature=${result.signals.hasLocalFeature}, " +
+                            "embedding=${result.signals.embeddingScore?.let { score -> String.format(Locale.US, "%.6f", score) } ?: "null"}",
+                    )
+                }
+            }
+            latestRecommendResponse?.let { response ->
+                appendLine()
+                appendLine("recommend response:")
+                appendLine(
+                    "requestId=${response.requestId}, status=${response.status}, " +
+                        "before=${response.diagnostics.candidateCountBeforeRank}, " +
+                        "after=${response.diagnostics.candidateCountAfterRank}, " +
+                        "latencyMs=${response.diagnostics.latencyMs}, " +
+                        "degradePath=${response.diagnostics.degradePath ?: "null"}",
+                )
+                response.results.forEach { result ->
+                    appendLine(
+                        "${result.localSongId} | score=${String.format(Locale.US, "%.6f", result.score)} | " +
+                            "reasons=${result.reasons.joinToString(",")} | " +
+                            "signals=metadata=${result.signals.hasMetadata}, " +
+                            "audio=${result.signals.hasAudioIdentity}, " +
+                            "feature=${result.signals.hasLocalFeature}, " +
+                            "embedding=${result.signals.embeddingScore?.let { score -> String.format(Locale.US, "%.6f", score) } ?: "null"}",
+                    )
+                }
+            }
             appendLine()
             appendLine("scanned songs:")
             songIds.take(200).forEach { songId ->
@@ -413,6 +508,49 @@ class MainActivity : AppCompatActivity() {
             Log.i(
                 LOCAL_FEATURE_LOG_TAG,
                 "extracted none roundIndex=$roundIndex loggedTotal=${loggedSongIds.size} songCount=${songIds.size}",
+            )
+        }
+    }
+
+    private fun updateSearchSeedSongs(songIds: List<String>) {
+        searchSeedAdapter.clear()
+        searchSeedAdapter.addAll(songIds)
+        searchSeedAdapter.notifyDataSetChanged()
+    }
+
+    private fun buildSearchRecommendService(): SearchRecommendService {
+        return DefaultSearchRecommendService(
+            repository = repository,
+            engine = HybridRetrievalEngine(
+                sources = listOf(LocalSource(repository)),
+                ranker = DefaultLocalRanker(),
+            ),
+        )
+    }
+
+    private fun logSearchRecommendResponse(
+        mode: SearchRecommendMode,
+        inputSongId: String,
+        response: SearchRecommendResponse,
+    ) {
+        Log.i(
+            SEARCH_RECOMMEND_LOG_TAG,
+            "requestId=${response.requestId} mode=$mode inputSongId=$inputSongId topK=$SEARCH_RECOMMEND_TOP_K " +
+                "candidateCountBeforeRank=${response.diagnostics.candidateCountBeforeRank} " +
+                "candidateCountAfterRank=${response.diagnostics.candidateCountAfterRank} " +
+                "latencyMs=${response.diagnostics.latencyMs} " +
+                "degradePath=${response.diagnostics.degradePath ?: "null"} status=${response.status}",
+        )
+        response.results.forEach { result ->
+            Log.i(
+                SEARCH_RECOMMEND_LOG_TAG,
+                "result mode=$mode localSongId=${result.localSongId} " +
+                    "score=${String.format(Locale.US, "%.6f", result.score)} " +
+                    "reasons=${result.reasons.joinToString(",")} " +
+                    "hasMetadata=${result.signals.hasMetadata} " +
+                    "hasAudioIdentity=${result.signals.hasAudioIdentity} " +
+                    "hasLocalFeature=${result.signals.hasLocalFeature} " +
+                    "embeddingScore=${result.signals.embeddingScore?.let { score -> String.format(Locale.US, "%.6f", score) } ?: "null"}",
             )
         }
     }

@@ -8,9 +8,12 @@
     <string name="audio_compare_toggle">Audio Compare</string>
     <string name="local_feature_guard">Local Feature Guard</string>
     <string name="local_feature_candidate_scope">Candidate Queue Scope</string>
+    <string name="search_seed_song">Search/Recommend Seed Song</string>
     <string name="run_pipeline">Run Scan + Match</string>
     <string name="run_changed_scan">Run Changed-Signature Scan</string>
     <string name="run_audio_identity">Run Audio Identity</string>
     <string name="run_local_feature">Run Local Feature</string>
+    <string name="run_search">Run Search</string>
+    <string name="run_recommend">Run Recommend</string>
     <string name="mark_outdated">Mark OUTDATED</string>
 </resources>
