@@ -32,3 +32,5 @@ google-services.json
 
 # Android Profiling
 *.hprof
+tools/resource-profile/artifacts/**
+!tools/resource-profile/artifacts/.gitkeep

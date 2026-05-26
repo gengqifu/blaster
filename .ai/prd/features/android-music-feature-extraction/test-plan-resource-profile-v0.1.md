@@ -119,7 +119,7 @@
 进度标记：
 
 - [x] 里程碑 1：文档与自动化接口冻结
-- [ ] 里程碑 2：采集器与 artifact 骨架
+- [x] 里程碑 2：采集器与 artifact 骨架
 - [ ] 里程碑 3：Audio Identity 自动采集与汇总
 - [ ] 里程碑 4：Local Feature 自动采集与汇总
 - [ ] 里程碑 5：验收与文档回写规范
@@ -179,14 +179,14 @@
 
 验收记录：
 
-- 开始时间：未完成
-- 完成时间：未完成
-- 负责人：未完成
-- 基线分支：未完成
-- 执行命令：未完成
-- 关键日志/截图：未完成
-- 数据产物：未完成
-- 门禁结论：未完成
+- 开始时间：2026-05-26 11:27:37 CST
+- 完成时间：2026-05-26 11:32:15 CST
+- 负责人：Codex
+- 基线分支：main
+- 执行命令：`chmod +x tools/resource-profile/run_resource_profile.sh tools/resource-profile/collectors/collect_cpu_sample.sh tools/resource-profile/collectors/collect_mem_sample.sh tools/resource-profile/collectors/collect_io_sample.sh tools/resource-profile/collectors/capture_phase_logcat.sh`；`tools/resource-profile/run_resource_profile.sh --phase audio_identity --dry-run`；`ls -la tools/resource-profile/artifacts/20260526-113149-audio_identity`
+- 关键日志/截图：dry-run 输出 `Dry run scaffold generated at /Volumes/ORICO/git/ext/Blaster/tools/resource-profile/artifacts/20260526-113149-audio_identity`；`meta.json` 状态为 `dry_run_ready`。
+- 数据产物：`tools/resource-profile/README.md`；`tools/resource-profile/run_resource_profile.sh`；`tools/resource-profile/collectors/`；`tools/resource-profile/templates/`；`tools/resource-profile/artifacts/.gitkeep`；样例 artifact：`tools/resource-profile/artifacts/20260526-113149-audio_identity/`
+- 门禁结论：通过。工具目录结构、参数解析、占位输出文件和失败前落盘机制已建立；`.gitignore` 已忽略 `tools/resource-profile/artifacts/**`。
 - 阻塞与处理：无
 
 ### 4.3 里程碑 3：Audio Identity 自动采集与汇总
