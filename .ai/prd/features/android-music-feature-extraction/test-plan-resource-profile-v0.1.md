@@ -75,9 +75,12 @@
 自动完成判定：
 
 - 至少出现一条 `BlasterAudioIdentity extracted ... digest=sha256:... payloadSize=...`
+- 若达到固定采样窗口，且窗口内已经出现过 `extracted`，允许以：
+  - `completion_signal = profile_window_elapsed_after_extract`
+  结束本次资源采样；此信号表示已获得有效画像样本，但未等待整个队列自然清空。
 - 且静默窗口内不再出现新的 `extracted`
 - compare 关闭时允许伴随 `compare_skipped`
-- 若超时未出现提取日志，则：
+- 若超时且未出现提取日志，则：
   - `completion_signal = timeout_no_extract`
 
 #### embedding 提取阶段
@@ -120,7 +123,7 @@
 
 - [x] 里程碑 1：文档与自动化接口冻结
 - [x] 里程碑 2：采集器与 artifact 骨架
-- [ ] 里程碑 3：Audio Identity 自动采集与汇总
+- [x] 里程碑 3：Audio Identity 自动采集与汇总
 - [ ] 里程碑 4：Local Feature 自动采集与汇总
 - [ ] 里程碑 5：验收与文档回写规范
 
@@ -214,15 +217,15 @@
 
 验收记录：
 
-- 开始时间：未完成
-- 完成时间：未完成
-- 负责人：未完成
-- 基线分支：未完成
-- 执行命令：未完成
-- 关键日志/截图：未完成
-- 数据产物：未完成
-- 门禁结论：未完成
-- 阻塞与处理：无
+- 开始时间：2026-05-26 11:39:35 CST
+- 完成时间：2026-05-26 12:12:23 CST
+- 负责人：Codex
+- 基线分支：main
+- 执行命令：`adb shell am force-stop com.orion.blaster.demo`；`tools/resource-profile/run_resource_profile.sh --phase audio_identity --output-dir tools/resource-profile/artifacts/final-audio-identity-run-2`
+- 关键日志/截图：`phase.logcat.txt` 已捕捉 11 条 `BlasterAudioIdentity extracted ... digest=sha256:... payloadSize=...` 与对应 `compare_skipped ...`；正式 run 结束状态为 `Completed audio_identity profiling at tools/resource-profile/artifacts/final-audio-identity-run-2`。
+- 数据产物：`tools/resource-profile/artifacts/final-audio-identity-run-2/meta.json`；`tools/resource-profile/artifacts/final-audio-identity-run-2/cpu_samples.csv`；`tools/resource-profile/artifacts/final-audio-identity-run-2/mem_samples.csv`；`tools/resource-profile/artifacts/final-audio-identity-run-2/io_samples.csv`；`tools/resource-profile/artifacts/final-audio-identity-run-2/phase.logcat.txt`；`tools/resource-profile/artifacts/final-audio-identity-run-2/summary.json`；`tools/resource-profile/artifacts/final-audio-identity-run-2/report.md`
+- 门禁结论：通过。脚本已能自动触发 `RUN AUDIO IDENTITY`，并自动生成 7 个固定产物文件。正式 run 的 `summary.json` 已产出真实指标：`elapsed_ms=61000`、`cpu_peak_process=125`、`pss_peak_kb=176815`、`syscr_delta=6111`、`sample_count=30`。本轮采用 `completion_signal=profile_window_elapsed_after_extract` 作为有效资源画像收口信号。
+- 阻塞与处理：调试过程中发现“等待队列自然清空”会显著放大单次 profiling 时长，因此补充了固定采样窗口收口规则；同时移除了循环中的重复 PID 解析，避免 adb 短时抖动中断 phase。
 
 ### 4.4 里程碑 4：Local Feature 自动采集与汇总
 
