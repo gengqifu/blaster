@@ -4,63 +4,94 @@
 
 ### 1.1 测试目标
 
-本测试计划用于验证 Android 端以下两类提前提取阶段的资源占用情况：
+本测试计划用于把 Android 端提前提取阶段的资源占用测试升级为自动化执行方案，覆盖以下两类阶段：
 
 - `RUN AUDIO IDENTITY`
 - `RUN LOCAL FEATURE`
 
-首版测试完成后应具备：
+首版自动化测试完成后应具备：
 
-- 可复现的空闲基线采集方法。
-- 可复现的指纹提取阶段资源采集方法。
-- 可复现的 embedding 提取阶段资源采集方法。
-- 可回溯到命令、日志和数据结果的验收记录。
-- 可对比两阶段在 CPU、内存、I/O、时延与稳定性上的差异。
+- 自动触发目标阶段。
+- 自动采集 CPU / 内存 / I/O / 时延数据。
+- 自动落盘原始采样文件。
+- 自动生成 `summary.json` 与 `report.md`。
+- 通过统一 artifact 目录保留可回溯证据。
+- 仅保留人工复核结论与门禁回写，不再要求人工手算峰值和增量。
 
 ### 1.2 非目标
 
 本计划不做：
 
-- 不执行性能优化改造。
-- 不把 `RUN SEARCH` / `RUN RECOMMEND` 纳入首版资源画像。
-- 不测试真实云端链路资源占用。
+- 不直接实施性能优化。
+- 不纳入 `RUN SEARCH` / `RUN RECOMMEND` 资源测试。
+- 不纳入真实云端链路资源占用。
 - 不强制使用 Android Studio Profiler、Perfetto 或外部功耗仪器作为首版验收条件。
-- 不在本计划中维护功能开发进度状态。
+- 不在本文中并列维护手工版与自动化版两套主路径。
 
-## 2. 测试对象与阶段边界
+## 2. 测试对象与自动化阶段边界
 
 ### 2.1 测试对象
 
 - 应用包名：`com.orion.blaster.demo`
 - Demo 入口：`com.orion.blaster.demo/.MainActivity`
+- 自动化脚本目录：`tools/resource-profile/`
+- 自动化主入口：`tools/resource-profile/run_resource_profile.sh`
+- 首版 phase 参数：
+  - `audio_identity`
+  - `local_feature`
 - 指纹阶段日志标签：`BlasterAudioIdentity`
 - embedding 阶段日志标签：`BlasterLocalFeature`
 
-### 2.2 阶段边界定义
+### 2.2 自动化执行链路
+
+脚本 `run_resource_profile.sh` 负责完整编排：
+
+1. 检查设备连接与包名。
+2. 获取 PID。
+3. 清理 logcat。
+4. 启动 app。
+5. 可选执行 `RUN SCAN + MATCH` 作为前置准备。
+6. 通过 `adb shell input tap` 自动点击目标阶段按钮。
+7. 在阶段运行期间定时采样：
+   - `top -H`
+   - `dumpsys meminfo`
+   - `/proc/$PID/status`
+   - `/proc/$PID/io`
+   - `logcat`
+8. 监听阶段完成日志。
+9. 停止采样。
+10. 生成原始文件、汇总文件和 Markdown 报告草稿。
+
+### 2.3 阶段边界定义
 
 #### 空闲基线
 
-从 app 启动完成并进入 `MainActivity` 开始，到用户不执行任何按钮操作并静置 10 秒结束。
+从 app 启动完成并进入 `MainActivity` 开始，到自动化脚本在不执行任何阶段按钮的情况下静置 10 秒结束。
 
 #### 指纹提取阶段
 
-从点击 `RUN AUDIO IDENTITY` 开始，到当前轮次最后一条有效提取日志结束。
+从脚本自动点击 `RUN AUDIO IDENTITY` 开始，到脚本确认当前轮次提取完成为止。
 
-首版完成判定日志：
+自动完成判定：
 
-- `extracted ... digest=sha256:... payloadSize=...`
-- compare 关闭时可见 `compare_skipped ...`
+- 至少出现一条 `BlasterAudioIdentity extracted ... digest=sha256:... payloadSize=...`
+- 且静默窗口内不再出现新的 `extracted`
+- compare 关闭时允许伴随 `compare_skipped`
+- 若超时未出现提取日志，则：
+  - `completion_signal = timeout_no_extract`
 
 #### embedding 提取阶段
 
-从点击 `RUN LOCAL FEATURE` 开始，到当前 drain 周期出现完成日志结束。
+从脚本自动点击 `RUN LOCAL FEATURE` 开始，到脚本确认当前 drain 周期完成为止。
 
-首版完成判定日志：
+自动完成判定：
 
-- `drain_round_start`
-- `drain_round_result`
-- `extracted ... embeddingDim=1024 embeddingHead=[...]`
-- `drain_completed` 或 `drain_timeout`
+- 至少出现一条 `BlasterLocalFeature extracted ... embeddingDim=1024 ...`
+- 且出现：
+  - `drain_completed`
+  - 或 `drain_timeout`
+- 若无 embedding 提取日志，则：
+  - `completion_signal = timeout_no_embedding`
 
 ## 3. 状态变更规则
 
@@ -83,30 +114,34 @@
 
 ## 4. 执行拆分（5 个里程碑）
 
-本计划按 5 个里程碑推进。每个里程碑必须形成可核查产物，后续里程碑不得跳步。
+本计划按 5 个里程碑推进。每个里程碑都必须形成自动化测试可核查产物，后续里程碑不得跳步。
 
 进度标记：
 
-- [ ] 里程碑 1：文档与测试口径冻结
-- [ ] 里程碑 2：空闲基线采集
-- [ ] 里程碑 3：Audio Identity 资源测试
-- [ ] 里程碑 4：Local Feature 资源测试
-- [ ] 里程碑 5：验收与收口
+- [ ] 里程碑 1：文档与自动化接口冻结
+- [ ] 里程碑 2：采集器与 artifact 骨架
+- [ ] 里程碑 3：Audio Identity 自动采集与汇总
+- [ ] 里程碑 4：Local Feature 自动采集与汇总
+- [ ] 里程碑 5：验收与文档回写规范
 
-### 4.1 里程碑 1：文档与测试口径冻结
+### 4.1 里程碑 1：文档与自动化接口冻结
 
 产出：
 
-- 新测试计划文档初稿。
-- 测试范围、指标、命令、日志口径冻结。
-- `dev-plan-v0.1.md` 与 `mvp-4-local-embedding-validation.md` 的入口引用。
+- 本文档自动化版本定稿。
+- `tools/resource-profile/README.md`
+- 脚本参数、输出文件格式、完成判定冻结。
+- `dev-plan-v0.1.md` 与 `mvp-4-local-embedding-validation.md` 的自动化入口引用。
 
 完成标准：
 
 - 本文档存在，且包含 `状态变更规则` 与 `进度标记`。
-- 测试范围仅覆盖 `RUN AUDIO IDENTITY` 与 `RUN LOCAL FEATURE`。
-- 指标、命令、日志字段、阶段完成判定已写死。
-- 入口引用已加，但状态只在本文档维护。
+- 文档中已写死：
+  - 脚本入口
+  - phase 参数
+  - 输出目录结构
+  - 自动完成判定
+- 状态只在本文档维护，不在入口文档双写。
 
 验收记录：
 
@@ -120,24 +155,27 @@
 - 门禁结论：未完成
 - 阻塞与处理：无
 
-### 4.2 里程碑 2：空闲基线采集
+### 4.2 里程碑 2：采集器与 artifact 骨架
 
 产出：
 
-- demo 空闲基线数据。
-- 一次完整的 CPU / 内存 / I/O 基线记录。
+- `run_resource_profile.sh` 主脚本骨架。
+- CPU / 内存 / I/O / logcat 采集器子脚本。
+- artifact 目录结构。
+- 样例空输出。
 
 完成标准：
 
 - 里程碑 1 必须为 `[x]`。
-- 成功记录 PID。
-- 成功记录以下命令结果：
-  - `adb shell dumpsys cpuinfo | rg com.orion.blaster.demo`
-  - `adb shell top -H -p "$PID" -n 1`
-  - `adb shell dumpsys meminfo com.orion.blaster.demo`
-  - `adb shell cat /proc/$PID/status | rg 'VmRSS|VmSize|Threads'`
-  - `adb shell cat /proc/$PID/io`
-- 验收记录中必须写出基线数值，不允许只写“已采集”。
+- 新增目录结构已固定：
+  - `tools/resource-profile/README.md`
+  - `tools/resource-profile/run_resource_profile.sh`
+  - `tools/resource-profile/collectors/`
+  - `tools/resource-profile/templates/`
+  - `tools/resource-profile/artifacts/`
+- 不运行真实测试也能生成目录骨架。
+- 脚本失败时仍会写出 `meta.json` 与错误状态。
+- `.gitignore` 已忽略 `tools/resource-profile/artifacts/**`。
 
 验收记录：
 
@@ -151,28 +189,28 @@
 - 门禁结论：未完成
 - 阻塞与处理：无
 
-### 4.3 里程碑 3：Audio Identity 资源测试
+### 4.3 里程碑 3：Audio Identity 自动采集与汇总
 
 产出：
 
-- `RUN AUDIO IDENTITY` 阶段资源数据。
-- 指纹提取阶段日志证据。
-- 与空闲基线的增量对比。
+- `audio_identity` 自动执行能力。
+- 原始采样文件。
+- 自动生成 `summary.json` 与 `report.md`。
 
 完成标准：
 
 - 里程碑 2 必须为 `[x]`。
-- 成功执行指纹阶段前置：
-  - `adb shell pidof -s com.orion.blaster.demo`
-  - `adb logcat -c`
-  - `adb shell am start -n com.orion.blaster.demo/.MainActivity`
-- 日志中出现：
-  - `extracted ... digest=sha256:... payloadSize=...`
-- compare 关闭时可补充记录：
-  - `compare_skipped ...`
-- 有 CPU / 内存 / I/O 采样结果。
-- 有阶段开始时间、结束时间与阶段耗时。
-- 验收记录必须写出峰值与增量，不允许只写“有波动”。
+- 脚本可自动触发 `RUN AUDIO IDENTITY`。
+- 能捕捉 `BlasterAudioIdentity extracted`。
+- 自动生成以下文件：
+  - `meta.json`
+  - `cpu_samples.csv`
+  - `mem_samples.csv`
+  - `io_samples.csv`
+  - `phase.logcat.txt`
+  - `summary.json`
+  - `report.md`
+- 自动计算 CPU / 内存 / I/O / 耗时摘要。
 
 验收记录：
 
@@ -186,25 +224,21 @@
 - 门禁结论：未完成
 - 阻塞与处理：无
 
-### 4.4 里程碑 4：Local Feature 资源测试
+### 4.4 里程碑 4：Local Feature 自动采集与汇总
 
 产出：
 
-- `RUN LOCAL FEATURE` 阶段资源数据。
-- embedding 提取阶段日志证据。
-- 多轮 drain 资源变化记录。
+- `local_feature` 自动执行能力。
+- 原始采样文件。
+- 自动生成 `summary.json` 与 `report.md`。
 
 完成标准：
 
 - 里程碑 3 必须为 `[x]`。
-- 日志中出现：
-  - `extracted ... embeddingDim=1024 embeddingHead=[...]`
-  - `drain_completed` 或 `drain_timeout`
-- 有 CPU / 内存 / I/O 峰值与阶段耗时。
-- 有“前几轮 vs 后几轮”耗时或现象记录，用于判断是否存在降频、热衰减或漂移。
-- 验收记录必须区分：
-  - 进程级资源变化
-  - 阶段级日志完成证据
+- 脚本可自动触发 `RUN LOCAL FEATURE`。
+- 能捕捉 `BlasterLocalFeature extracted`。
+- 能识别 `drain_completed` 或 `drain_timeout`。
+- 自动生成多轮耗时与峰值摘要。
 
 验收记录：
 
@@ -218,24 +252,20 @@
 - 门禁结论：未完成
 - 阻塞与处理：无
 
-### 4.5 里程碑 5：验收与收口
+### 4.5 里程碑 5：验收与文档回写规范
 
 产出：
 
-- 指纹阶段 vs embedding 阶段对比结论。
-- 风险清单。
-- 后续优化建议入口。
+- 自动化执行验收记录。
+- 文档回写模板。
+- `v0.1` 作为自动化版的替代关系说明。
 
 完成标准：
 
 - 里程碑 4 必须为 `[x]`。
-- 文档中必须存在：
-  - 空闲基线
-  - Audio Identity 测试结果
-  - Local Feature 测试结果
-  - 差异对比结论
-- 每个阶段都能回溯到具体命令和日志。
-- 验收记录中必须给出“是否达到首版可接受资源行为”的结论。
+- 每次真实执行都能产出可留档 artifact。
+- 文档验收记录可直接引用 `report.md` / `summary.json`。
+- 人工只需补结论，不需要手算峰值和增量。
 
 验收记录：
 
@@ -249,7 +279,7 @@
 - 门禁结论：未完成
 - 阻塞与处理：无
 
-## 5. 测试验收基线
+## 5. 自动化测试验收基线
 
 ### 5.1 指标冻结
 
@@ -273,55 +303,66 @@
 - 稳定性
   - 连续运行是否崩溃、ANR、耗时漂移
 - 补充观测
-  - 功耗 / 热量 / 降频现象（首版以观察记录为主，不强制仪器量化）
+  - 功耗 / 热量 / 降频现象（首版只记录观察，不强制仪器量化）
 
-### 5.2 测试命令口径
+### 5.2 输出目录与文件结构
 
-基础前置：
+输出目录固定为：
 
-```bash
-adb shell pidof -s com.orion.blaster.demo
-adb logcat -c
-adb shell am start -n com.orion.blaster.demo/.MainActivity
-```
+- `tools/resource-profile/artifacts/<timestamp>-<phase>/`
 
-空闲基线：
+每次执行一个阶段，固定输出以下文件：
 
-```bash
-adb shell dumpsys cpuinfo | rg com.orion.blaster.demo
-adb shell top -H -p "$PID" -n 1
-adb shell dumpsys meminfo com.orion.blaster.demo
-adb shell cat /proc/$PID/status | rg 'VmRSS|VmSize|Threads'
-adb shell cat /proc/$PID/io
-```
+- `meta.json`
+- `cpu_samples.csv`
+- `mem_samples.csv`
+- `io_samples.csv`
+- `phase.logcat.txt`
+- `summary.json`
+- `report.md`
 
-指纹阶段日志：
+### 5.3 自动汇总字段冻结
 
-```bash
-adb logcat -v time BlasterAudioIdentity:I '*:S'
-```
+`summary.json` 必须至少包含以下字段：
 
-embedding 阶段日志：
+- `phase`
+- `started_at`
+- `ended_at`
+- `elapsed_ms`
+- `cpu_peak_process`
+- `cpu_peak_thread`
+- `pss_peak_kb`
+- `native_heap_peak_kb`
+- `dalvik_heap_peak_kb`
+- `thread_peak`
+- `read_bytes_delta`
+- `write_bytes_delta`
+- `syscr_delta`
+- `syscw_delta`
+- `completion_signal`
+- `sample_count`
 
-```bash
-adb logcat -v time BlasterLocalFeature:I '*:S'
-```
+### 5.4 报告自动汇总与人工复核边界
 
-### 5.3 首版完成判定日志
+自动分析只做统计和事实提炼，不自动输出性能优劣结论。
 
-Audio Identity：
+`report.md` 至少生成以下段落：
 
-- `extracted ... digest=sha256:... payloadSize=...`
-- compare 关闭时可见 `compare_skipped ...`
+- 测试元信息
+- 阶段完成信号
+- CPU 峰值摘要
+- 内存峰值摘要
+- I/O 增量摘要
+- 耗时摘要
+- 关键日志片段
+- 人工复核结论占位
 
-Local Feature：
+人工仍需补充两类内容：
 
-- `drain_round_start`
-- `drain_round_result`
-- `extracted ... embeddingDim=1024 embeddingHead=[...]`
-- `drain_completed` 或 `drain_timeout`
+- 是否达到“首版可接受资源行为”
+- 风险判断与后续优化建议
 
-### 5.4 验收记录模板字段
+### 5.5 验收记录模板字段
 
 每个里程碑统一使用以下字段，不允许删减：
 
@@ -337,15 +378,16 @@ Local Feature：
 
 要求：
 
-- `数据产物` 中必须写实际测到的表格、日志摘要或截图文件名。
-- 里程碑 2 / 3 / 4 / 5 必须有真实数据，不允许只写“已执行”。
+- `数据产物` 必须引用具体 artifact 路径或文件名。
+- `关键日志/截图` 必须引用 `phase.logcat.txt` 中的关键片段或自动报告摘要。
+- 不再接受“已手动采集”这类描述。
 
 ## 6. 与后续优化工作的交接
 
-后续优化阶段可基于本文档结果继续推进，但不在本文中直接执行：
+后续优化阶段可以基于本文自动化产物继续推进，但不在本文中直接执行优化：
 
 - 若 CPU 峰值异常，优先分析解码线程、推理线程与批次大小。
 - 若 `Native Heap` 持续不回落，优先排查 JNI、TFLite runtime、MediaCodec 资源释放。
 - 若 I/O 增量异常，优先排查重复解码、重复读文件与重复落库。
-- 若后几轮耗时显著高于前几轮，优先排查热衰减、降频与后台调度影响。
-- 若首版资源行为不可接受，应新开优化计划文档，不直接改写本文验收结果。
+- 若后几轮耗时显著高于前几轮，优先排查热衰减、降频与后台调度。
+- 若首版资源行为不可接受，应新开优化计划文档，而不是改写本文历史验收结果。

@@ -18,7 +18,7 @@ MVP-4 完成后应具备：
 - 可通过 ResultProvider 查询 `LOCAL_FEATURE_READY`。
 - 模型能力关闭时，整体流程仍可正常结束。
 - YAMNet top-K 分类只用于内部诊断或实验，不作为业务 mood / genre 输出。
-- 资源占用测试执行计划独立维护在 `../test-plan-resource-profile-v0.1.md`，用于验证 `RUN AUDIO IDENTITY` 与 `RUN LOCAL FEATURE` 的 CPU、内存、I/O 与阶段耗时。
+- 资源占用测试执行计划独立维护在 `../test-plan-resource-profile-v0.1.md`，并按自动落盘 + 自动汇总方案验证 `RUN AUDIO IDENTITY` 与 `RUN LOCAL FEATURE` 的 CPU、内存、I/O 与阶段耗时。
 
 ### 1.2 非目标
 
@@ -478,7 +478,7 @@ MVP-4 完成后需要向后续阶段交接：
 
 ## 16. 执行拆分（5 个里程碑）
 
-资源占用测试不在本节双写状态，统一以 `../test-plan-resource-profile-v0.1.md` 为唯一状态来源。
+资源占用测试不在本节双写状态，统一以 `../test-plan-resource-profile-v0.1.md` 为唯一状态来源；该文档当前口径为自动化测试执行计划。
 
 在不改变 MVP-4 完整功能范围的前提下，执行按以下 5 个里程碑推进。每个里程碑都要求“实现 + 测试”闭环后再进入下一步，避免模型可行性、契约、推理、调度和 demo 混在同一次交付中导致验收口径漂移。
 

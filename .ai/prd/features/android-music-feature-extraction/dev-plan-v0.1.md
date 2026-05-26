@@ -52,7 +52,7 @@
 | MVP-3 | `mvp-plans/mvp-3-audio-fingerprint-mock-match.md` | 已补齐 |
 | MVP-4 | `mvp-plans/mvp-4-local-embedding-validation.md` | 已补齐 |
 | Search/Recommend（新增） | `tech-design-search-recommend-v0.1.md`、`dev-plan-search-recommend-v0.1.md`、`decisions/2026-05-21-search-recommend-sdk-contract-policy.md`、`decisions/2026-05-21-search-recommend-ranking-policy.md`、`decisions/2026-05-21-search-recommend-hybrid-extension-policy.md` | 规划中 |
-| 资源占用测试（新增） | `test-plan-resource-profile-v0.1.md` | 规划中 |
+| 资源占用测试（新增） | `test-plan-resource-profile-v0.1.md` | 自动化测试计划 |
 
 ## 4. MVP-1：客户端 Mock 闭环骨架
 
