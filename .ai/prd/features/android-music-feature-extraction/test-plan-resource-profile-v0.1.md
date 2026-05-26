@@ -118,7 +118,7 @@
 
 进度标记：
 
-- [ ] 里程碑 1：文档与自动化接口冻结
+- [x] 里程碑 1：文档与自动化接口冻结
 - [ ] 里程碑 2：采集器与 artifact 骨架
 - [ ] 里程碑 3：Audio Identity 自动采集与汇总
 - [ ] 里程碑 4：Local Feature 自动采集与汇总
@@ -145,14 +145,14 @@
 
 验收记录：
 
-- 开始时间：未完成
-- 完成时间：未完成
-- 负责人：未完成
-- 基线分支：未完成
-- 执行命令：未完成
-- 关键日志/截图：未完成
-- 数据产物：未完成
-- 门禁结论：未完成
+- 开始时间：2026-05-26 11:27:37 CST
+- 完成时间：2026-05-26 11:27:37 CST
+- 负责人：Codex
+- 基线分支：main
+- 执行命令：`rg -n "资源占用测试|进度标记|里程碑 1|里程碑 2|里程碑 3|里程碑 4|里程碑 5" .ai/prd/features/android-music-feature-extraction/test-plan-resource-profile-v0.1.md .ai/prd/features/android-music-feature-extraction/dev-plan-v0.1.md .ai/prd/features/android-music-feature-extraction/mvp-plans/mvp-4-local-embedding-validation.md`；`sed -n '1,260p' .ai/prd/features/android-music-feature-extraction/test-plan-resource-profile-v0.1.md`；`rg -n "BlasterAudioIdentity|BlasterLocalFeature|drain_completed|drain_timeout|compare_skipped|extracted" demo/src/main/java core/src/main/java`
+- 关键日志/截图：确认 `BlasterAudioIdentity` 日志由 `FeaturePipeline` 输出；确认 `BlasterLocalFeature` 的 `extracted`、`drain_completed`、`drain_timeout` 由 `MainActivity` 输出，可作为自动完成判定信号。
+- 数据产物：本文档自动化版本定稿；`dev-plan-v0.1.md` 与 `mvp-4-local-embedding-validation.md` 已保持自动化入口引用且不双写状态。
+- 门禁结论：通过。脚本入口、phase 参数、输出文件集合、完成判定与唯一状态来源均已冻结，允许进入里程碑 2。
 - 阻塞与处理：无
 
 ### 4.2 里程碑 2：采集器与 artifact 骨架
