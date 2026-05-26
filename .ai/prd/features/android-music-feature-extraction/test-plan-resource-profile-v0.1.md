@@ -125,7 +125,7 @@
 - [x] 里程碑 2：采集器与 artifact 骨架
 - [x] 里程碑 3：Audio Identity 自动采集与汇总
 - [x] 里程碑 4：Local Feature 自动采集与汇总
-- [ ] 里程碑 5：验收与文档回写规范
+- [x] 里程碑 5：验收与文档回写规范
 
 ### 4.1 里程碑 1：文档与自动化接口冻结
 
@@ -272,14 +272,14 @@
 
 验收记录：
 
-- 开始时间：未完成
-- 完成时间：未完成
-- 负责人：未完成
-- 基线分支：未完成
-- 执行命令：未完成
-- 关键日志/截图：未完成
-- 数据产物：未完成
-- 门禁结论：未完成
+- 开始时间：2026-05-26 12:17:27 CST
+- 完成时间：2026-05-26 12:19:32 CST
+- 负责人：Codex
+- 基线分支：main
+- 执行命令：`sed -n '1,220p' tools/resource-profile/README.md`；`sed -n '255,460p' .ai/prd/features/android-music-feature-extraction/test-plan-resource-profile-v0.1.md`
+- 关键日志/截图：README 已补齐运行命令、completion signal、artifact 解读和失败场景；主文档已保留 milestone 3 / 4 的真实 artifact 路径，可直接回溯到 `summary.json`、`report.md` 与 `phase.logcat.txt`。
+- 数据产物：`tools/resource-profile/README.md`；`tools/resource-profile/artifacts/final-audio-identity-run-2/summary.json`；`tools/resource-profile/artifacts/final-audio-identity-run-2/report.md`；`tools/resource-profile/artifacts/final-local-feature-run/summary.json`；`tools/resource-profile/artifacts/final-local-feature-run/report.md`
+- 门禁结论：通过。README 与主文档口径已一致；真实执行可直接引用 artifact 回写验收记录；失败场景已被显式写入 README，不再依赖人工口头说明。
 - 阻塞与处理：无
 
 ## 5. 自动化测试验收基线
@@ -384,6 +384,22 @@
 - `数据产物` 必须引用具体 artifact 路径或文件名。
 - `关键日志/截图` 必须引用 `phase.logcat.txt` 中的关键片段或自动报告摘要。
 - 不再接受“已手动采集”这类描述。
+
+### 5.6 文档回写规范
+
+每次真实执行完成后，验收记录至少要引用以下三类证据：
+
+- `summary.json`
+  - 回写核心指标，如 `elapsed_ms`、`cpu_peak_process`、`pss_peak_kb`、`read_bytes_delta`、`completion_signal`
+- `report.md`
+  - 回写阶段摘要、round 摘要和关键日志片段
+- `phase.logcat.txt`
+  - 回写完成判定依赖的原始日志证据
+
+人工回写时只补充两类结论：
+
+- 是否达到当前版本可接受资源行为
+- 后续优化风险或假设
 
 ## 6. 与后续优化工作的交接
 
