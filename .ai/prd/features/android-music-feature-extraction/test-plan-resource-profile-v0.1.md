@@ -124,7 +124,7 @@
 - [x] 里程碑 1：文档与自动化接口冻结
 - [x] 里程碑 2：采集器与 artifact 骨架
 - [x] 里程碑 3：Audio Identity 自动采集与汇总
-- [ ] 里程碑 4：Local Feature 自动采集与汇总
+- [x] 里程碑 4：Local Feature 自动采集与汇总
 - [ ] 里程碑 5：验收与文档回写规范
 
 ### 4.1 里程碑 1：文档与自动化接口冻结
@@ -245,14 +245,14 @@
 
 验收记录：
 
-- 开始时间：未完成
-- 完成时间：未完成
-- 负责人：未完成
-- 基线分支：未完成
-- 执行命令：未完成
-- 关键日志/截图：未完成
-- 数据产物：未完成
-- 门禁结论：未完成
+- 开始时间：2026-05-26 12:13:28 CST
+- 完成时间：2026-05-26 12:17:27 CST
+- 负责人：Codex
+- 基线分支：main
+- 执行命令：`adb shell am force-stop com.orion.blaster.demo`；`tools/resource-profile/run_resource_profile.sh --phase local_feature --output-dir tools/resource-profile/artifacts/final-local-feature-run`
+- 关键日志/截图：`phase.logcat.txt` 已捕捉 45 条 `BlasterLocalFeature extracted roundIndex=... embeddingDim=1024 ...` 日志，并最终捕捉 `drain_timeout rounds=9 elapsedMs=201952 processed=45 remainingRunnableEstimate=353 stopReason=timeout`。
+- 数据产物：`tools/resource-profile/artifacts/final-local-feature-run/meta.json`；`tools/resource-profile/artifacts/final-local-feature-run/cpu_samples.csv`；`tools/resource-profile/artifacts/final-local-feature-run/mem_samples.csv`；`tools/resource-profile/artifacts/final-local-feature-run/io_samples.csv`；`tools/resource-profile/artifacts/final-local-feature-run/phase.logcat.txt`；`tools/resource-profile/artifacts/final-local-feature-run/summary.json`；`tools/resource-profile/artifacts/final-local-feature-run/report.md`
+- 门禁结论：通过。脚本已能自动触发 `RUN LOCAL FEATURE`，并识别 `drain_timeout` 作为 phase 完成信号。正式 run 的 `summary.json` 已产出真实指标：`elapsed_ms=201000`、`cpu_peak_process=125`、`cpu_peak_thread=65.3`、`pss_peak_kb=199822`、`read_bytes_delta=13377536`、`sample_count=101`。`report.md` 已输出 9 轮 drain 摘要及首轮/末轮耗时入口。
 - 阻塞与处理：无
 
 ### 4.5 里程碑 5：验收与文档回写规范
