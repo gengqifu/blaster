@@ -76,6 +76,30 @@
 - `degradePath`
 - `status`
 
+资源类指标说明如下：
+
+| 指标 | 含义 | 典型来源 | 使用边界 |
+| --- | --- | --- | --- |
+| `elapsed_ms` | 当前阶段从触发到完成信号出现的总耗时，单位毫秒 | `summary.json` / 自动化汇总结果 | 用于阶段级耗时对比，不直接表示单首歌曲耗时 |
+| `cpu_peak_process` | 采样窗口内目标进程的 CPU 峰值 | `top` / 采样脚本汇总 | 反映进程级最高 CPU 占用，不等于平均 CPU |
+| `cpu_peak_thread` | 采样窗口内单线程 CPU 峰值 | `top -H` / 采样脚本汇总 | 反映最忙线程的峰值，不等于进程整体负载 |
+| `pss_peak_kb` | 采样窗口内进程 PSS 内存峰值，单位 KB | `dumpsys meminfo` / 汇总结果 | 用于比较内存压力，不等于 Java heap 单独大小 |
+| `thread_peak` | 采样窗口内线程数峰值 | `/proc/$PID/status` / 汇总结果 | 用于观察线程膨胀，不直接表示线程质量 |
+| `read_bytes_delta` | 采样窗口内进程读字节增量 | `/proc/$PID/io` / 汇总结果 | 反映读 I/O 变化；个别阶段可参考但不单独作为强结论依据 |
+| `syscr_delta` | 采样窗口内进程读系统调用次数增量 | `/proc/$PID/io` / 汇总结果 | 用于辅助判断读操作活跃度，通常与 `read_bytes_delta` 一起看 |
+| `round_count` | 多轮处理阶段的轮次统计 | 阶段日志 / 汇总结果 | 主要用于 `local_feature` 等 drain 型阶段 |
+
+消费侧指标说明如下：
+
+| 指标 | 含义 | 典型来源 | 使用边界 |
+| --- | --- | --- | --- |
+| `latencyMs` | 单次 `search/recommend` 请求耗时，单位毫秒 | `BlasterSearchRecommend` 日志 / diagnostics | 只表示消费侧请求耗时，不包含后台提取成本 |
+| `candidateCountBeforeRank` | 排序前候选规模 | 检索阶段日志 / diagnostics | 用于判断召回规模，不直接表示结果质量 |
+| `candidateCountAfterRank` | 排序后保留下来的结果规模 | 排序阶段日志 / diagnostics | 用于判断最终输出规模 |
+| `topK` | 本次请求要求返回的数量上限 | 调用方输入 / 日志 | 用于约束结果规模，不表示实际返回数量 |
+| `degradePath` | 本次请求实际采用的降级路径 | diagnostics / 日志 | 表示请求走了哪种信号组合或本地降级方式，不是错误码 |
+| `status` | 本次请求结果状态 | diagnostics / 日志 | 用于区分 `OK/EMPTY/INVALID_INPUT/UNSUPPORTED` |
+
 所有记录都附带测试时间、设备、数据集和阶段上下文。横向比较不同阶段时，完成信号和停止条件保持一致。
 
 ## 5. 有效样本
@@ -98,6 +122,16 @@
 
 - 超时且无真实提取日志
 - 关键 artifact 缺失，无法还原峰值与耗时
+
+完成信号说明如下：
+
+| 信号 | 适用阶段 | 含义 | 是否视为有效样本 |
+| --- | --- | --- | --- |
+| `profile_window_elapsed_after_extract` | `audio_identity` | 已出现真实提取日志，采样窗口到点后主动停止采样 | 是 |
+| `drain_completed` | `local_feature` | 多轮处理自然完成，队列在当前轮次内清空或正常结束 | 是 |
+| `drain_timeout` | `local_feature` | bounded run 到达设定窗口后正常结束 | 是 |
+| `timeout_no_extract` | `audio_identity` | 超时且没有出现真实提取日志 | 否 |
+| `timeout_no_embedding` | `local_feature` | 超时且没有出现真实 embedding 提取日志 | 否 |
 
 ### 5.2 `local_feature`
 
@@ -140,11 +174,30 @@
 - `summary.json`
 - `report.md`
 
+artifact 说明如下：
+
+| 文件 | 含义 | 典型用途 |
+| --- | --- | --- |
+| `meta.json` | 本次测试的基础元信息与执行状态 | 记录 phase、时间、状态、设备与运行上下文 |
+| `cpu_samples.csv` | CPU 采样原始数据 | 回看采样点、复核峰值 |
+| `mem_samples.csv` | 内存采样原始数据 | 回看 PSS 等内存变化 |
+| `io_samples.csv` | I/O 采样原始数据 | 回看读写增量与系统调用变化 |
+| `phase.logcat.txt` | 阶段日志原文 | 验证完成信号、提取日志和异常原因 |
+| `summary.json` | 机器可读汇总结果 | 自动对比、回归判断、脚本消费 |
+| `report.md` | 人工可读摘要报告 | 快速复核本次结果、回写结论 |
+
 产物分工如下：
 
 - `summary.json`：机器可读汇总
 - `report.md`：人工复核摘要
 - `phase.logcat.txt`：完成信号、阶段日志和异常线索
+
+补充说明：
+
+- `meta.json` 关注“这次测试是什么、跑成什么状态”。
+- `summary.json` 关注“核心指标最后是多少”。
+- `phase.logcat.txt` 关注“为什么认为这次样本有效或无效”。
+- `report.md` 关注“给人快速看结论”。
 
 ## 7. 验收口径
 
